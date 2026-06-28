@@ -8,7 +8,23 @@
 - **Bees** — los workers especializados. Cada uno tiene un rol independiente (ej. `database-bee`, `frontend-bee`, `infrastructure-bee`) y desarrolla su tarea en su propio worktree, sin pisar el trabajo de los demás.
 - **Honeycomb** — el directorio raíz que contiene los worktrees: el de Amalia y el de cada bee. Es el panal donde vive el enjambre.
 
-La comunicación entre Amalia y los bees ya **no es vía archivos**: es vía una **base de datos SQLite** que actúa como cola de tareas y fuente de verdad única. Amalia escribe tareas en la base; cada bee las reclama y reporta resultados ahí mismo. Esto se expone mediante una API/WebSocket (Capa 1, ahora **obligatoria**) y opcionalmente un dashboard (Capa 2). Cada worktree puede estar potenciado por un motor de IA distinto, declarado en su propio `bee.md` (ver Capa 3).
+La comunicación primaria entre Amalia y los bees es vía una **base de datos SQLite** que actúa como cola de tareas y fuente de verdad única — Amalia escribe tareas en la base; cada bee las reclama y reporta resultados ahí mismo, todo a través de una API/WebSocket (Capa 1, **obligatoria**).
+
+Pero **la estructura de archivos (`TASKS.md`/`RESULTS.md`) se mantiene como réplica local en cada worktree**. La Capa 1 replica en disco cada tarea que asigna a un bee, y cada bee replica en disco cada resultado que reporta — además de enviarlo a la base. Esto da **resiliencia ante caída de la base de datos**: si `amalia.db` o el Orchestrator API se caen, cada bee ya tiene su tarea escrita en su propio `TASKS.md` local y puede seguir trabajando de forma independiente, reportando en su `RESULTS.md` local. Cuando la base vuelve, se sincroniza (ver Capa 0 → "Modo degradado y reconciliación"). Cada worktree puede además estar potenciado por un motor de IA distinto, declarado en su propio `bee.md` (ver Capa 3).
+
+## Distribución e Instalación (npm)
+
+Amalia se distribuye como un **paquete npm con un binario CLI** (`amalia`), instalable en cualquier repositorio Git que ya tenga Node.js disponible:
+
+```bash
+npm install -g amalia        # instalación global del CLI
+# o, sin instalar globalmente:
+npx amalia init
+```
+
+- **`amalia init`** — ejecutado en la raíz de un repositorio Git existente. Crea la carpeta `honeycomb/`, el worktree `honeycomb/amalia/` (con sus `AGENTS.md`/`bee.md` por defecto), la carpeta `honeycomb/orchestrator-api/` con `amalia.db` ya con el esquema de la Capa 0 aplicado, y un marcador `.amalia-root` en la raíz del repo que el CLI usa para ubicar el panal desde cualquier subdirectorio.
+- A partir de ahí, **no se crean bees automáticamente** — Amalia (el orquestador) decide cuándo "hace eclosionar" (`hatch`) un nuevo bee según las tareas que identifique, vía el CLI (ver siguiente sección).
+- El CLI detecta el panal buscando `.amalia-root` hacia arriba desde el directorio actual, así que los comandos funcionan tanto parado en la raíz del repo como dentro de `honeycomb/amalia/` o de cualquier `*-bee/`.
 
 ## Arquitectura por Capas
 
@@ -26,7 +42,7 @@ La comunicación entre Amalia y los bees ya **no es vía archivos**: es vía una
    (Claude Code, opencode, Copilot CLI, Codex CLI, Ollama, etc.)
 ```
 
-- **Capa 0 (Modelo de Datos)**: la base de datos SQLite es la única fuente de verdad. Se eligió SQLite (y no Postgres/MySQL) porque se instala localmente sin depender de un servicio de base de datos externo — un solo archivo `.db` dentro del repositorio de Amalia.
+- **Capa 0 (Modelo de Datos)**: la base de datos SQLite es la fuente de verdad principal. Se eligió SQLite (y no Postgres/MySQL) porque se instala localmente sin depender de un servicio de base de datos externo — un solo archivo `.db` dentro del repositorio de Amalia. Cada worktree mantiene además una **réplica local en archivos** (`TASKS.md`/`RESULTS.md`) de sus propias tareas, para poder seguir operando si la base no está disponible.
 - **Capa 1 (Orchestrator API)**: **obligatoria**. Servicio Node.js/TypeScript que es el único proceso con acceso de escritura directo a la SQLite; expone REST + WebSocket para que Amalia, los bees y el dashboard interactúen con la cola de tareas.
 - **Capa 2 (Dashboard)**: opcional. Cliente web que consume la Capa 1.
 - **Capa 3 (Motores de Agente)**: Amalia y cada bee son sesiones de un motor de IA (CLI o API) que hablan con la Capa 1 — nunca tocan la base de datos directamente, siempre a través del API/cliente.
@@ -63,30 +79,46 @@ La comunicación entre Amalia y los bees ya **no es vía archivos**: es vía una
 
 ## Estructura de Directorios (Honeycomb)
 
+`honeycomb/` se crea dentro del repositorio Git objetivo al ejecutar `amalia init` (ver "Distribución e Instalación"). El marcador `.amalia-root` vive en la raíz del repo, junto a `honeycomb/`:
+
 ```
-honeycomb/
+<raíz-del-repo>/
+├── .amalia-root                 # Marcador que el CLI usa para ubicar el panal
+└── honeycomb/
 ├── amalia/                      # Worktree del orquestador principal
 │   ├── AGENTS.md                  # Rol y alcance de Amalia
-│   └── bee.md                     # Motor de IA de Amalia (mismo esquema que un bee)
+│   ├── bee.md                     # Motor de IA de Amalia (mismo esquema que un bee)
+│   ├── TASKS.md                   # Réplica local: tareas globales que Amalia ha publicado
+│   └── RESULTS.md                 # Réplica local: agregado de resultados recibidos
 ├── database-bee/                # Worktree: especialista en base de datos
 │   ├── AGENTS.md                  # Rol, alcance, límites (negocio)
-│   └── bee.md                     # Motor de IA + conexión (técnico)
+│   ├── bee.md                     # Motor de IA + conexión (técnico)
+│   ├── TASKS.md                   # Réplica local de sus tareas asignadas (sincronizada con la DB)
+│   └── RESULTS.md                 # Réplica local de sus reportes (sincronizada con la DB)
 ├── backend-api-bee/              # Worktree: especialista en API REST
 │   ├── AGENTS.md
-│   └── bee.md
+│   ├── bee.md
+│   ├── TASKS.md
+│   └── RESULTS.md
 ├── frontend-bee/                 # Worktree: especialista en frontend
 │   ├── AGENTS.md
-│   └── bee.md
+│   ├── bee.md
+│   ├── TASKS.md
+│   └── RESULTS.md
 ├── infrastructure-bee/           # Worktree: DevOps/infra
 │   ├── AGENTS.md
-│   └── bee.md
+│   ├── bee.md
+│   ├── TASKS.md
+│   └── RESULTS.md
 ├── orchestrator-api/             # Capa 1: servicio Node.js/TypeScript (obligatorio, no es worktree)
-│   └── amalia.db                   # Base de datos SQLite (fuente de verdad)
+│   └── amalia.db                   # Base de datos SQLite (fuente de verdad principal)
 ├── dashboard/                    # Capa 2: cliente web (opcional, no es worktree)
 └── shared/                       # Recursos compartidos (opcional, no es worktree)
     ├── interfaces/                 # Contratos entre módulos
     └── docs/                       # Documentación global
 ```
+
+El paquete npm `amalia` provee el binario `amalia` (carpeta `bin/` del paquete) y el código del Orchestrator API; no se versiona dentro del repo objetivo más que lo que `amalia init` genera en `honeycomb/`.
 
 - `amalia/` y `*-bee/` son **worktrees reales de Git** (`git worktree add honeycomb/database-bee <rama>`), todos apuntando al mismo repositorio original.
 - `orchestrator-api/`, `dashboard/` y `shared/` son carpetas normales (no worktrees) — infraestructura propia de Amalia, no entregables del repositorio orquestado.
@@ -193,6 +225,62 @@ in_progress → pending  (lock expirado: bee caído, ver más abajo)
 - Cada bee activo hace `PATCH /api/orchestrator/bees/:id/heartbeat` cada `heartbeat_seconds` (declarado en su `bee.md`).
 - La Capa 1 corre un job periódico: si `now - last_heartbeat_at > heartbeat_seconds * 3`, marca el bee como `offline` y libera sus tareas `in_progress` (`status='pending'`, `locked_by=NULL`) para que otro proceso del mismo bee (al reiniciar) o el propio bee tras reconectar pueda reclamarlas de nuevo.
 
+### Réplica en archivos: `TASKS.md` y `RESULTS.md`
+
+La base de datos es la fuente de verdad, pero **cada worktree mantiene una copia local en archivos** de sus propios datos, escrita por la Capa 1 (para tareas asignadas) y por el propio bee (para resultados):
+
+```markdown
+# TASKS.md — database-bee (réplica local, sincronizada con amalia.db)
+
+### TASK-001
+- **Estado**: pending
+- **Asignado a**: database-bee
+- **Prioridad**: high
+- **Depende de**: TASK-000
+- **Descripción**: Crear entidad `ExperimentRun` con campos: id, nombre, fecha_inicio, estado, id_dataset (FK)
+- **Criterios de aceptación**:
+  - Entidad creada con anotaciones JPA correctas
+  - Repositorio CRUD generado
+  - Migración o ddl-auto actualizado
+- **Lock**: <vacío>
+- **Última sincronización con DB**: 2026-06-27T10:00:00Z
+```
+
+```markdown
+# RESULTS.md — database-bee (réplica local, sincronizada con amalia.db)
+
+## TASK-001: Crear entidad ExperimentRun
+
+### Estado: ✅ Completado
+
+### Archivos creados/modificados
+- `src/main/java/.../entity/ExperimentRunEntity.java` (creado)
+- `src/main/java/.../repository/ExperimentRunRepository.java` (creado)
+
+### Decisiones
+- Se usó `GenerationType.IDENTITY` para el ID
+
+### Bloqueos / Pendientes
+- Ninguno
+
+### Sincronizado con DB
+- Sí (2026-06-27T10:15:00Z)
+```
+
+- Cuando Amalia publica una tarea (`POST /tasks`), la Capa 1 la inserta en `amalia.db` **y** escribe/actualiza la fila correspondiente en el `TASKS.md` del worktree destino.
+- Cuando un bee reclama (`/claim`) o reporta (`/results`) una tarea, **primero actualiza su copia local** (`TASKS.md`/`RESULTS.md`) y luego llama a la API para persistir en `amalia.db`. Si la llamada a la API falla, el bee sigue operando solo con el archivo local — la tarea queda con el campo `Última sincronización con DB` desactualizado, marcando que hay cambios pendientes de subir.
+
+### Modo degradado y reconciliación
+
+Si `amalia.db` o el Orchestrator API caen, toda la colmena entra en **modo degradado**, pero no se detiene:
+
+1. Cada bee ya tiene su(s) tarea(s) asignada(s) en su `TASKS.md` local — puede seguir reclamando (marcando `Lock` localmente), ejecutando y reportando en su `RESULTS.md` local sin depender de la base.
+2. Amalia, si también pierde la API, puede seguir leyendo los `RESULTS.md` locales de cada worktree directamente (son archivos en el mismo filesystem/worktrees) para decidir próximos pasos, igual que en el protocolo de archivos original.
+3. Al recuperarse el Orchestrator API, corre una **reconciliación**: por cada worktree, compara el campo `Última sincronización con DB` de `TASKS.md`/`RESULTS.md` contra `tasks.updated_at`/`results.created_at` en la base.
+   - Si el archivo local tiene cambios más recientes que la base (la tarea avanzó de estado o se generó un resultado mientras la DB estaba caída), la Capa 1 los aplica a la base (`INSERT`/`UPDATE`) y emite los eventos correspondientes.
+   - Si la base tiene tareas nuevas creadas por Amalia que el worktree no recibió (porque la API estaba caída al momento de crearlas), la Capa 1 las escribe ahora en el `TASKS.md` local de ese bee.
+   - No hay conflictos de doble escritor sobre la misma tarea: cada tarea solo es modificada por el bee al que está `assigned_to`, así que la reconciliación es de "quién tiene la versión más nueva", no de fusión de cambios concurrentes.
+
 ## Capa 3 — Modelo de Ejecución (Motores de Agente)
 
 ### `AGENTS.md` vs `bee.md`
@@ -289,8 +377,8 @@ Reglas de `bee.md`:
 1. **Arranque**: sesión CLI (o API) en `honeycomb/amalia/`, según su propio `bee.md`.
 2. **Registro**: `POST /api/orchestrator/bees/register` (si no existe ya).
 3. **Análisis**: lee el requerimiento del repositorio original y lo descompone en tareas.
-4. **Publicación**: `POST /api/orchestrator/tasks` por cada tarea, con `assigned_to` y `depends_on`.
-5. **Escucha**: se suscribe al WebSocket (`task:status_changed`, eventos de resultado) o hace polling de `GET /api/orchestrator/tasks?status=completed,failed`.
+4. **Publicación**: `POST /api/orchestrator/tasks` por cada tarea, con `assigned_to` y `depends_on` — la Capa 1 persiste en `amalia.db` y replica la tarea en el `TASKS.md` local del bee destino.
+5. **Escucha**: se suscribe al WebSocket (`task:status_changed`, eventos de resultado) o hace polling de `GET /api/orchestrator/tasks?status=completed,failed`. Si la API no responde, puede leer directamente los `RESULTS.md` locales de cada worktree como respaldo.
 6. **Decisión**: ante un resultado, crea nuevas tareas, desbloquea dependientes, o marca el trabajo global como terminado.
 
 ### Ciclo de vida de un Bee
@@ -298,9 +386,9 @@ Reglas de `bee.md`:
 1. **Arranque**: sesión CLI o lanzador API en `honeycomb/<nombre-bee>/`, según `bee.md`.
 2. **Lectura de contrato**: lee `AGENTS.md` (rol/límites) y `bee.md` (su propia configuración de motor).
 3. **Registro y heartbeat**: `POST /api/orchestrator/bees/register`, luego `PATCH /api/orchestrator/bees/:id/heartbeat` cada `heartbeat_segundos`.
-4. **Reclamo de tarea**: `POST /api/orchestrator/tasks/:id/claim` (la Capa 1 ejecuta el `UPDATE` atómico descrito en Capa 0). Si pierde la carrera, pide la siguiente tarea `pending` asignada a su nombre.
+4. **Reclamo de tarea**: lee su `TASKS.md` local primero (funciona incluso si la API está caída); si hay conexión, confirma el reclamo con `POST /api/orchestrator/tasks/:id/claim` (la Capa 1 ejecuta el `UPDATE` atómico descrito en Capa 0) y este responde escribiendo el `Lock` también en el archivo local. Si pierde la carrera (otra ejecución ya la tomó), pide la siguiente tarea `pending`.
 5. **Ejecución**: usa sus propias herramientas (Read/Edit/Bash/etc.) para resolver la tarea dentro de su worktree.
-6. **Reporte**: `POST /api/orchestrator/tasks/:id/results` con el outcome (`completed`/`failed`) y detalle; la Capa 1 actualiza `tasks.status` y emite el evento.
+6. **Reporte**: escribe primero en su `RESULTS.md` local, luego llama `POST /api/orchestrator/tasks/:id/results` con el outcome (`completed`/`failed`) y detalle; la Capa 1 actualiza `tasks.status` en la base y emite el evento. Si la API no responde, el resultado queda en el archivo local pendiente de sincronizar (ver "Modo degradado y reconciliación" en Capa 0).
 7. **Repetición o cierre**: vuelve a pedir trabajo, o termina la sesión si no hay tareas pendientes — decisión operativa, no estructural.
 
 ## Capa 1 — Orchestrator API (Node.js / TypeScript) — Obligatoria
@@ -330,6 +418,27 @@ Es el **único** proceso con acceso de escritura a `amalia.db`. Todo el resto de
 - Socket.io para tiempo real
 - SQLite (`better-sqlite3` o `node:sqlite`) — única opción, sin alternativa Postgres (decisión fija: cero servicios externos)
 
+## CLI de Amalia — Tareas que Amalia puede realizar
+
+El binario `amalia` es el cliente principal del Orchestrator API. Se ejecuta normalmente desde el worktree `honeycomb/amalia/` (es la herramienta con la que el agente/orquestador "trabaja"), pero funciona desde cualquier punto dentro del repo gracias al marcador `.amalia-root`.
+
+| Comando | Qué hace |
+|---|---|
+| `amalia init` | Bootstrap inicial: crea `honeycomb/`, el worktree `amalia/`, `orchestrator-api/` y `amalia.db` con el esquema aplicado. |
+| `amalia start` | Levanta el Orchestrator API (Capa 1) como proceso de fondo (REST + WebSocket) sobre `amalia.db`. |
+| `amalia stop` | Detiene el Orchestrator API. |
+| `amalia hatch <nombre-bee> [--role "<resumen>"] [--engine claude-code\|opencode\|copilot-cli\|codex-cli\|ollama] [--branch <rama>]` | "Hace eclosionar" un bee nuevo: crea el `git worktree` en `honeycomb/<nombre-bee>/`, genera sus `AGENTS.md`, `bee.md`, `TASKS.md` y `RESULTS.md` a partir de templates, y lo registra en la tabla `bees`. |
+| `amalia kill <nombre-bee>` | Elimina un bee: borra su `git worktree`, sus archivos locales y su registro en `bees` (acción destructiva, pide confirmación). |
+| `amalia check [<nombre-bee>]` | Muestra el estado de un bee o de todos: `online/idle/busy/offline`, último heartbeat, tarea actual. Lee de `amalia.db` vía la API; si la API no responde, cae a leer los `TASKS.md`/`RESULTS.md` locales. |
+| `amalia task add <nombre-bee> "<descripción>" [--priority high\|medium\|low] [--depends-on TASK-ID]` | Crea una tarea nueva asignada a un bee (lo que hace Amalia al descomponer un requerimiento). |
+| `amalia task list [--status pending,in_progress,...] [--bee <nombre-bee>]` | Lista tareas con filtros. |
+| `amalia task show <task-id>` | Detalle de una tarea: estado, lock, dependencias, resultado si existe. |
+| `amalia logs <nombre-bee>` | Muestra el historial de `RESULTS.md`/eventos de un bee. |
+| `amalia sync` | Fuerza la reconciliación archivo↔DB descrita en la Capa 0 (útil tras un modo degradado). |
+| `amalia doctor` | Valida el esquema de `amalia.db`, limpia locks expirados, detecta bees con heartbeat vencido y verifica consistencia entre archivos locales y la base. |
+
+Estos comandos son la interfaz directa de los pasos 4 y 5 del **Ciclo de vida de Amalia** (publicación de tareas y escucha de resultados): en la práctica, la sesión de Amalia ejecuta `amalia hatch` y `amalia task add` para delegar trabajo, y `amalia check`/`amalia logs` para supervisarlo, en vez de llamar manualmente a la API REST.
+
 ## Capa 2 — Dashboard Web (Opcional)
 
 Cliente que consume exclusivamente la API/WebSocket de la Capa 1:
@@ -349,7 +458,9 @@ Stack sugerido: HTML + JS vanilla o un framework ligero (Svelte/React), consumie
 - [ ] Reclamo atómico de tareas (`/tasks/:id/claim`)
 - [ ] Job de heartbeats vencidos y desbloqueo de dependencias
 - [ ] WebSocket (Socket.io) con los eventos descritos
-- [ ] Templates de `AGENTS.md` y `bee.md`
+- [ ] Replicación automática DB → `TASKS.md` y bee → `RESULTS.md` en cada worktree
+- [ ] Job de reconciliación al reconectar (modo degradado)
+- [ ] Templates de `AGENTS.md`, `bee.md`, `TASKS.md`, `RESULTS.md`
 - [ ] Convención de nomenclatura `<área>-bee`
 
 ### Fase 2 — Integración con motores (Capa 3)
@@ -363,10 +474,20 @@ Stack sugerido: HTML + JS vanilla o un framework ligero (Svelte/React), consumie
 - [ ] Vista de detalle de tarea + historial de reportes
 - [ ] Creación manual de tareas desde la UI
 
+### Fase 4 — Empaquetado y CLI (distribución como npm)
+- [ ] Paquete npm `amalia` con binario `amalia` (bin/)
+- [ ] `amalia init` — bootstrap de `honeycomb/`, worktree `amalia/`, `orchestrator-api/`, `amalia.db`
+- [ ] `amalia hatch` / `amalia kill` — alta y baja de bees (worktree + archivos + registro en DB)
+- [ ] `amalia start` / `amalia stop` — control del Orchestrator API como proceso de fondo
+- [ ] `amalia check` / `amalia task add` / `amalia task list` / `amalia task show` / `amalia logs`
+- [ ] `amalia sync` / `amalia doctor` — reconciliación y diagnóstico
+- [ ] Publicación del paquete en npm (versión inicial)
+
 ## Consideraciones Técnicas
 
+- **Distribución**: Amalia es un paquete npm instalable en cualquier repositorio Git (`npm install -g amalia` + `amalia init`); no asume nada sobre el proyecto objetivo más allá de tener Git y Node.js disponibles.
 - **Git Worktrees**: `amalia/` y cada `*-bee/` son worktrees reales (`git worktree add`) del repositorio original bajo `honeycomb/`.
-- **Fuente de verdad única**: la SQLite (`amalia.db`) reemplaza por completo al protocolo de archivos de versiones anteriores; ningún worktree lee/escribe tareas directamente en disco fuera de la API.
+- **Fuente de verdad principal + réplica resiliente**: la SQLite (`amalia.db`) es la fuente de verdad cuando está disponible, pero cada worktree mantiene su `TASKS.md`/`RESULTS.md` como réplica local — si la base o la API caen, la colmena sigue trabajando con archivos y reconcilia al volver la conexión (ver Capa 0).
 - **Cola de mensajes embebida**: la tabla `tasks` + reclamo atómico (`UPDATE ... WHERE status='pending'`) cumple el rol de un broker tipo RabbitMQ sin añadir un segundo servicio de infraestructura.
 - **Multi-motor**: cada worktree declara su motor en `bee.md`, separado del contrato de rol en `AGENTS.md`. Cambiar de motor no afecta el contrato de negocio.
 - **Seguridad de credenciales**: ninguna API key se escribe en `bee.md` ni se versiona en Git; solo se referencian nombres de variables de entorno (`auth_env`).
@@ -377,6 +498,7 @@ Stack sugerido: HTML + JS vanilla o un framework ligero (Svelte/React), consumie
 
 | Componente | Tecnología |
 |-----------|------------|
+| Distribución / CLI | Paquete npm (`amalia`), binario en `bin/` |
 | Orchestrator API (Capa 1) | Node.js + TypeScript |
 | Base de datos / cola de mensajes (Capa 0) | SQLite (`better-sqlite3` o `node:sqlite`) |
 | WebSocket | Socket.io |
@@ -386,4 +508,4 @@ Stack sugerido: HTML + JS vanilla o un framework ligero (Svelte/React), consumie
 
 ---
 
-*Documento de especificación v4.0 — Amalia: SQLite como fuente de verdad obligatoria y cola de mensajes embebida, separación `AGENTS.md` (contrato de rol) / `bee.md` (configuración de motor), ciclos de vida explícitos de Amalia y los bees vía Orchestrator API*
+*Documento de especificación v6.0 — Amalia: distribuible como paquete npm instalable en cualquier repositorio Git (`amalia init`), con CLI propio (`hatch`, `check`, `task add`, `sync`, `doctor`, etc.) para orquestar bees desde el worktree de Amalia; SQLite como fuente de verdad principal y cola de mensajes embebida, con réplica resiliente en `TASKS.md`/`RESULTS.md` por worktree (modo degradado + reconciliación), separación `AGENTS.md` (contrato de rol) / `bee.md` (configuración de motor)*
