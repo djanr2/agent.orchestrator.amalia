@@ -1,5 +1,7 @@
 # Especificación de Arquitectura: Amalia — Orquestador Multi-Agente
 
+> **Alcance de esta especificación: Fase 1.** Todo lo descrito en este documento (Capas 0-3, CLI, distribución npm, seguridad, etc.) corresponde a la **Fase 1** del proyecto Amalia. La Fase 2 se definirá en un documento separado una vez que la Fase 1 esté **terminada y probada** — no se anticipa ni se diseña aquí.
+
 ## Visión General
 
 **Amalia** es un sistema que permite a **múltiples motores de IA** (Claude Code, opencode, GitHub Copilot CLI, OpenAI Codex CLI, modelos locales vía Ollama, etc.) coordinarse como un enjambre de trabajo, usando la metáfora de una colmena:
@@ -789,4 +791,4 @@ Stack sugerido: HTML + JS vanilla o un framework ligero (Svelte/React), consumie
 
 ---
 
-*Documento de especificación v12.0 — Cambios sobre v11.0: Amalia **no forma parte del repositorio orquestado** — `amalia init` genera/actualiza el `.gitignore` del repo objetivo para excluir el panal completo (`honeycomb/` o la ruta elegida) y `.amalia-root`, y `amalia doctor` verifica que esas líneas no se hayan borrado; **nombre/ruta del panal configurable** vía `--honeycomb-path` en `init`, persistido en `.amalia-root` (que pasa de marcador vacío a archivo de configuración) y consultado por todos los comandos posteriores. Se mantiene todo lo de v11.0 (rama de integración al día con `main`, roles y alcance explícitos, seguridad por token, concurrencia con `rev`/lease, Capa 2 obligatoria, distribución npm, etc.).*
+*Documento de especificación v13.0 — Se marca explícitamente que todo este documento corresponde a la **Fase 1** del proyecto; la Fase 2 queda pendiente de definir, a iniciar solo cuando la Fase 1 esté terminada y probada. Cambios sobre v11.0: Amalia **no forma parte del repositorio orquestado** — `amalia init` genera/actualiza el `.gitignore` del repo objetivo para excluir el panal completo (`honeycomb/` o la ruta elegida) y `.amalia-root`, y `amalia doctor` verifica que esas líneas no se hayan borrado; **nombre/ruta del panal configurable** vía `--honeycomb-path` en `init`, persistido en `.amalia-root` (que pasa de marcador vacío a archivo de configuración) y consultado por todos los comandos posteriores. Se mantiene todo lo de v11.0 (rama de integración al día con `main`, roles y alcance explícitos, seguridad por token, concurrencia con `rev`/lease, Capa 2 obligatoria, distribución npm, etc.).*
