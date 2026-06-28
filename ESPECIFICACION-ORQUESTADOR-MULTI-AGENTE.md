@@ -54,11 +54,38 @@ Amalia se distribuye como un **paquete npm con un binario CLI** (`amalia`), inst
 npm install -g amalia        # instalación global del CLI
 # o, sin instalar globalmente:
 npx amalia init
+# con nombre/ruta de panal personalizada:
+npx amalia init --honeycomb-path tools/swarm
 ```
 
-- **`amalia init`** — ejecutado en la raíz de un repositorio Git existente. Crea la carpeta `honeycomb/`, el worktree `honeycomb/amalia/` (con sus `AGENTS.md`/`bee.md` por defecto), la carpeta `honeycomb/orchestrator-api/` con `amalia.db` ya con el esquema de la Capa 0 aplicado, y un marcador `.amalia-root` en la raíz del repo que el CLI usa para ubicar el panal desde cualquier subdirectorio.
+- **`amalia init [--honeycomb-path <ruta>]`** — ejecutado en la raíz de un repositorio Git existente. Crea la carpeta del panal (`honeycomb/` por defecto, o la ruta indicada en `--honeycomb-path`), el worktree `<panal>/amalia/` (con sus `AGENTS.md`/`bee.md` por defecto), la carpeta `<panal>/orchestrator-api/` con `amalia.db` ya con el esquema de la Capa 0 aplicado, y el archivo `.amalia-root` en la raíz del repo.
+- **`.amalia-root` no es solo un marcador vacío**: es un archivo de configuración (YAML/JSON) que registra la ruta real del panal, de modo que el nombre/ubicación se elige una sola vez en `init` y todos los comandos posteriores lo respetan sin necesidad de repetir el flag:
+  ```yaml
+  # .amalia-root
+  honeycomb_path: tools/swarm
+  ```
 - A partir de ahí, **no se crean bees automáticamente** — Amalia (el orquestador) decide cuándo "hace eclosionar" (`hatch`) un nuevo bee según las tareas que identifique, vía el CLI (ver siguiente sección).
-- El CLI detecta el panal buscando `.amalia-root` hacia arriba desde el directorio actual, así que los comandos funcionan tanto parado en la raíz del repo como dentro de `honeycomb/amalia/` o de cualquier `*-bee/`.
+- El CLI detecta el panal buscando `.amalia-root` hacia arriba desde el directorio actual, lee la ruta real del panal desde ahí, así que los comandos funcionan tanto parado en la raíz del repo como dentro de `<panal>/amalia/` o de cualquier `*-bee/`, sin importar el nombre elegido.
+
+### Amalia no forma parte del repositorio orquestado
+
+Amalia es una herramienta de **apoyo** al desarrollo multiagente, no un componente del proyecto que orquesta: ningún archivo que genera (el panal completo, con todos los worktrees, `amalia.db`, tokens, etc.) debe quedar versionado en el historial del repositorio original.
+
+Por eso, como parte del bootstrap, `amalia init`:
+1. Crea (o actualiza, si ya existe) el `.gitignore` en la raíz del repo, agregando las entradas necesarias. Si se usó el nombre por defecto:
+   ```gitignore
+   # Amalia — generado automáticamente por `amalia init`, no editar a mano esta sección
+   .amalia-root
+   honeycomb/
+   ```
+   O, si se usó `--honeycomb-path tools/swarm`:
+   ```gitignore
+   # Amalia — generado automáticamente por `amalia init`, no editar a mano esta sección
+   .amalia-root
+   tools/swarm/
+   ```
+2. Si el repositorio ya tiene un `.gitignore`, Amalia **agrega** estas líneas (delimitadas con un comentario marcador) en vez de sobreescribir el archivo completo — y `amalia doctor` valida que esas líneas sigan presentes, por si alguien las borró por error.
+3. Si por algún motivo `honeycomb/`/`<ruta-personalizada>` o `.amalia-root` ya estaban trackeados por Git **antes** de correr `amalia init` (un escenario inusual, p. ej. una instalación previa mal hecha), `amalia init` lo detecta y avisa explícitamente, en vez de dejarlos ignorados silenciosamente mientras siguen versionados.
 
 ### Precondiciones de instalación
 
@@ -126,12 +153,13 @@ Las cuatro capas son parte integral del proyecto Amalia — ninguna es opcional.
 
 ## Estructura de Directorios (Honeycomb)
 
-`honeycomb/` se crea dentro del repositorio Git objetivo al ejecutar `amalia init` (ver "Distribución e Instalación"). El marcador `.amalia-root` vive en la raíz del repo, junto a `honeycomb/`:
+`honeycomb/` se crea dentro del repositorio Git objetivo al ejecutar `amalia init` (ver "Distribución e Instalación") — el nombre y la ruta son personalizables con `--honeycomb-path` y quedan registrados en `.amalia-root`; el resto de esta especificación usa `honeycomb/` como nombre por defecto, pero todo aplica igual a una ruta personalizada. El archivo `.amalia-root` vive en la raíz del repo, junto al panal, y **ambos quedan excluidos de Git** vía `.gitignore` (ver "Amalia no forma parte del repositorio orquestado"):
 
 ```
 <raíz-del-repo>/
-├── .amalia-root                 # Marcador que el CLI usa para ubicar el panal
-└── honeycomb/
+├── .gitignore                   # Amalia agrega aquí .amalia-root y la ruta del panal
+├── .amalia-root                 # Config del CLI: ruta real del panal (no se versiona)
+└── honeycomb/                   # (o la ruta indicada en --honeycomb-path; tampoco se versiona)
     ├── amalia/                      # Worktree del orquestador principal
     │   ├── AGENTS.md                  # Rol y alcance de Amalia
     │   ├── bee.md                     # Motor de IA de Amalia (mismo esquema que un bee)
@@ -660,7 +688,7 @@ El binario `amalia` es el cliente principal del Orchestrator API. Se ejecuta nor
 
 | Comando | Qué hace |
 |---|---|
-| `amalia init` | Valida precondiciones (Git instalado y con soporte de `worktree`, directorio es un repo Git, Node.js compatible) y, si todas pasan, hace el bootstrap: crea `honeycomb/`, el worktree `amalia/`, `orchestrator-api/` y `amalia.db` con el esquema aplicado. |
+| `amalia init [--honeycomb-path <ruta>]` | Valida precondiciones (Git instalado y con soporte de `worktree`, directorio es un repo Git, Node.js compatible) y, si todas pasan, hace el bootstrap: crea el panal (`honeycomb/` por defecto, o `<ruta>` si se indica), el worktree `amalia/`, `orchestrator-api/` y `amalia.db` con el esquema aplicado; escribe la ruta elegida en `.amalia-root`; agrega `.amalia-root` y la ruta del panal al `.gitignore` del repo. |
 | `amalia start` | Levanta el Orchestrator API (Capa 1) como proceso de fondo (REST + WebSocket) sobre `amalia.db`. |
 | `amalia stop` | Detiene el Orchestrator API. |
 | `amalia hatch <nombre-bee> [--role "<resumen>"] [--engine claude-code\|opencode\|copilot-cli\|codex-cli\|ollama] [--branch <rama>]` | "Hace eclosionar" un bee nuevo: valida que `<nombre-bee>` cumpla `^[a-z][a-z0-9-]*-bee$` (ver Capa 1 → Seguridad), crea el `git worktree` en `honeycomb/<nombre-bee>/`, genera sus `AGENTS.md`, `bee.md` y la carpeta `tasks/` (con `tasks.md` y `results.md`) a partir de templates, emite un token de bee en `orchestrator-api/.secrets/` y lo registra en la tabla `bees`. |
@@ -721,9 +749,11 @@ Stack sugerido: HTML + JS vanilla o un framework ligero (Svelte/React), consumie
 ### Fase 4 — Empaquetado y CLI (distribución como npm)
 - [ ] Paquete npm `amalia` con binario `amalia` (bin/)
 - [ ] Validación de precondiciones (Git instalado, soporte `git worktree`, repo Git válido, versión de Node) antes de `init`
-- [ ] `amalia init` — bootstrap de `honeycomb/`, worktree `amalia/`, `orchestrator-api/`, `amalia.db`
+- [ ] `amalia init [--honeycomb-path]` — bootstrap del panal (nombre/ruta configurable), worktree `amalia/`, `orchestrator-api/`, `amalia.db`, config en `.amalia-root`
+- [ ] Generación/actualización automática de `.gitignore` en `init` (excluir `.amalia-root` y la ruta del panal) + verificación en `doctor`
 - [ ] `amalia hatch` / `amalia kill` — alta y baja de bees (worktree + archivos + registro en DB)
 - [ ] `amalia start` / `amalia stop` — control del Orchestrator API como proceso de fondo
+- [ ] `amalia update` / `amalia integrate` — mantener la rama de integración al día y compendiar commits de bees
 - [ ] `amalia check` / `amalia task add` / `amalia task list` / `amalia task show` / `amalia logs`
 - [ ] `amalia sync` / `amalia doctor` — reconciliación y diagnóstico
 - [ ] Publicación del paquete en npm (versión inicial)
@@ -742,6 +772,8 @@ Stack sugerido: HTML + JS vanilla o un framework ligero (Svelte/React), consumie
 - **Escalabilidad**: el diseño actual es **single-host** por construcción (réplica de archivos en el filesystem local, la API escribiendo en los worktrees, y los `git worktree` viviendo todos en la misma máquina). Migrar a multi-host es bastante más que cambiar SQLite por Postgres: habría que resolver el acceso compartido a los worktrees (o repensar la réplica de archivos) y la ejecución remota de Git. La abstracción "todo el mundo habla con la API, nunca con la base" reduce el acoplamiento al motor de BD, pero **no** vuelve el sistema multi-host por sí sola.
 - **Seguridad de la API**: autenticación por token de bee (la identidad se deriva del token, no del body), endpoints administrativos restringidos al token de Amalia, escucha solo en `127.0.0.1`, validación/saneo de nombres, slugs y commits, y ejecución de Git con argumentos en array (sin shell). Ver Capa 1 → "Seguridad".
 - **Separación de responsabilidades en la integración**: Amalia automatiza el merge/cherry-pick mecánico y la detección de conflictos; nunca intenta resolver un conflicto de código por sí misma — eso queda siempre como intervención humana vía Git.
+- **Amalia no es parte del repositorio orquestado**: todo lo que genera (panal, worktrees, `amalia.db`, tokens) se excluye del control de versiones del proyecto vía `.gitignore`, gestionado automáticamente por `amalia init`/`amalia doctor` (ver "Distribución e Instalación → Amalia no forma parte del repositorio orquestado").
+- **Nombre/ruta del panal configurable**: `--honeycomb-path` en `amalia init` permite no usar `honeycomb/` como nombre; la elección queda persistida en `.amalia-root`, que el CLI consulta en cada comando para ubicar el panal real.
 
 ## Tecnologías
 
@@ -757,4 +789,4 @@ Stack sugerido: HTML + JS vanilla o un framework ligero (Svelte/React), consumie
 
 ---
 
-*Documento de especificación v11.0 — Cambios sobre v10.0: rol de Amalia precisado como mantenedora de una **rama de integración siempre al día con `main`** (`amalia update`, fast-forward only, marca inconsistencia si no aplica) donde se va preparando, bee por bee, un **compendio ordenado de commits** (`amalia integrate`) antes de llegar a la rama principal; se refuerza que el worktree de Amalia nunca contiene código propio y que **nunca repara inconsistencias de código ni de merge** — solo las detecta y las marca para que el programador las resuelva. Se mantiene todo lo de v10.0 (seguridad por token, concurrencia con `rev`/lease, integración serial, Capa 2 obligatoria, distribución npm, etc.).*
+*Documento de especificación v12.0 — Cambios sobre v11.0: Amalia **no forma parte del repositorio orquestado** — `amalia init` genera/actualiza el `.gitignore` del repo objetivo para excluir el panal completo (`honeycomb/` o la ruta elegida) y `.amalia-root`, y `amalia doctor` verifica que esas líneas no se hayan borrado; **nombre/ruta del panal configurable** vía `--honeycomb-path` en `init`, persistido en `.amalia-root` (que pasa de marcador vacío a archivo de configuración) y consultado por todos los comandos posteriores. Se mantiene todo lo de v11.0 (rama de integración al día con `main`, roles y alcance explícitos, seguridad por token, concurrencia con `rev`/lease, Capa 2 obligatoria, distribución npm, etc.).*
