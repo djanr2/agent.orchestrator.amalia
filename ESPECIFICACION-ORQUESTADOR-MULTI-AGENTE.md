@@ -18,14 +18,14 @@ Pero **la estructura de archivos se mantiene como réplica local en cada worktre
 
 ### Amalia — Orquestador
 
-**Rol**: coordinar el enjambre y mantener una **rama de integración siempre al día** con `main` (o la rama actual del repositorio padre), donde va preparando los commits de los bees antes de que lleguen a la rama principal. Amalia **nunca escribe código de la aplicación**; su trabajo es de gestión y de integración del trabajo ya hecho por los bees.
+**Rol**: coordinar el enjambre y mantener una **rama de integración siempre al día** con la **rama objetivo (`target`)** del repositorio padre (registrada en `.amalia-root`), donde va preparando los commits de los bees antes de que lleguen a esa rama. Amalia **nunca escribe código de la aplicación**; su trabajo es de gestión y de integración del trabajo ya hecho por los bees.
 
 Alcance:
 - Analizar el requerimiento general sobre el repositorio original y descomponerlo en tareas.
 - Crear y eliminar bees (`amalia hatch` / `amalia kill`).
 - Publicar tareas y resolver dependencias entre ellas (`amalia task add`, desbloqueo automático).
 - Supervisar el progreso (`amalia check`, `amalia logs`).
-- **Mantener su worktree actualizado respecto a `main`**: trae los cambios nuevos de la rama principal del repositorio padre a su propia rama de integración (`amalia update`, ver Capa 0).
+- **Mantener su worktree actualizado respecto a `target`**: trae los cambios nuevos de la rama objetivo del repositorio padre a su propia rama de integración vía `git rebase` (`amalia update`, ver Capa 0 → "Rama objetivo").
 - **Preparar e integrar en esa rama** los commits ya completados de cada bee (`amalia integrate`, ver más abajo) — es un compendio de los cambios de todos los bees, no código escrito por Amalia.
 - Reaccionar ante fallos o bloqueos: reasignar, reabrir tareas, marcar inconsistencias para intervención humana.
 
@@ -61,10 +61,12 @@ npx amalia init --honeycomb-path tools/swarm
 ```
 
 - **`amalia init [--honeycomb-path <ruta>]`** — ejecutado en la raíz de un repositorio Git existente. Crea la carpeta del panal (`honeycomb/` por defecto, o la ruta indicada en `--honeycomb-path`), el worktree `<panal>/amalia/` (con sus `AGENTS.md`/`bee.md` por defecto), la carpeta `<panal>/orchestrator-api/` con `amalia.db` ya con el esquema de la Capa 0 aplicado, y el archivo `.amalia-root` en la raíz del repo.
-- **`.amalia-root` no es solo un marcador vacío**: es un archivo de configuración (YAML/JSON) que registra la ruta real del panal, de modo que el nombre/ubicación se elige una sola vez en `init` y todos los comandos posteriores lo respetan sin necesidad de repetir el flag:
+- **`.amalia-root` no es solo un marcador vacío**: es un archivo de configuración (YAML/JSON) que registra la ruta real del panal **y la rama objetivo (`target_branch`)** desde la que nacen todos los worktrees, de modo que tanto el nombre/ubicación como la rama base se eligen una sola vez en `init` y todos los comandos posteriores los respetan sin repetir flags:
   ```yaml
   # .amalia-root
   honeycomb_path: tools/swarm
+  target_branch: main          # rama del repo padre en la que se ejecutó `amalia init`;
+                               # base de los worktrees y destino de la integración (ver Capa 0 → "Rama objetivo")
   ```
 - A partir de ahí, **no se crean bees automáticamente** — Amalia (el orquestador) decide cuándo "hace eclosionar" (`hatch`) un nuevo bee según las tareas que identifique, vía el CLI (ver siguiente sección).
 - El CLI detecta el panal buscando `.amalia-root` hacia arriba desde el directorio actual, lee la ruta real del panal desde ahí, así que los comandos funcionan tanto parado en la raíz del repo como dentro de `<panal>/amalia/` o de cualquier `*-bee/`, sin importar el nombre elegido.
@@ -72,6 +74,8 @@ npx amalia init --honeycomb-path tools/swarm
 ### Amalia no forma parte del repositorio orquestado
 
 Amalia es una herramienta de **apoyo** al desarrollo multiagente, no un componente del proyecto que orquesta: ningún archivo que genera (el panal completo, con todos los worktrees, `amalia.db`, tokens, etc.) debe quedar versionado en el historial del repositorio original.
+
+> **Importante — el `.gitignore` oculta directorios, no ramas.** Excluir `honeycomb/` del control de versiones ignora los **directorios de trabajo** de los worktrees (los archivos físicos de cada bee), pero **no** las **ramas ni los commits** de los bees: esos viven en el grafo de Git del propio repositorio y son precisamente la materia prima que `amalia integrate` compendia hacia la rama objetivo. Dicho de otro modo: el trabajo de los bees no se pierde por estar el panal en `.gitignore` — lo que se ignora es la carpeta, no la historia.
 
 Por eso, como parte del bootstrap, `amalia init`:
 1. Crea (o actualiza, si ya existe) el `.gitignore` en la raíz del repo, agregando las entradas necesarias. Si se usó el nombre por defecto:
@@ -253,17 +257,19 @@ CREATE TABLE tasks (
   slug            TEXT NOT NULL,                -- nombre de archivo: 'crear-tabla-events'; único dentro del worktree destino
   assigned_to     INTEGER NOT NULL REFERENCES bees(id),
   created_by      INTEGER NOT NULL REFERENCES bees(id), -- normalmente 'amalia'
-  status          TEXT NOT NULL DEFAULT 'pending', -- 'pending'|'claimed'|'in_progress'|'completed'|'blocked'|'failed'
+  status          TEXT NOT NULL DEFAULT 'pending', -- 'pending'|'in_progress'|'completed'|'blocked'|'failed'|'cancelled'
   priority        TEXT NOT NULL DEFAULT 'medium',  -- 'high'|'medium'|'low'
   description     TEXT NOT NULL,
   acceptance_criteria TEXT,
   attempts        INTEGER NOT NULL DEFAULT 0,      -- nº de veces que se reclamó/ejecutó
   max_attempts    INTEGER NOT NULL DEFAULT 3,      -- al agotarse -> 'blocked' para intervención
+  block_reason    TEXT,                            -- motivo cuando status='blocked': 'deps_unresolved'|'upstream_failed'|'retries_exhausted'|'timeout'
+  max_run_seconds INTEGER,                         -- watchdog: máx. tiempo en 'in_progress' antes de forzar fallo (NULL = usa el default de config)
   rev             INTEGER NOT NULL DEFAULT 1,      -- contador monotónico; +1 en cada cambio. Árbitro de la reconciliación (no timestamps)
   locked_by       INTEGER REFERENCES bees(id),     -- bee que reclamó la tarea
   locked_by_instance TEXT,                         -- id de instancia del bee que tiene el lease (reemplaza al PID, válido entre hosts)
   lease_expires_at TEXT,                           -- vencimiento del lease; al pasar, la Capa 1 puede re-liberar la tarea
-  claimed_at      TEXT,
+  claimed_at      TEXT,                            -- inicio del 'in_progress' actual; base del watchdog max_run_seconds
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (assigned_to, slug)
@@ -292,13 +298,14 @@ CREATE TABLE results (
   UNIQUE (task_id, idempotency_key)          -- un reintento con la misma clave es un no-op idempotente
 );
 
--- Intentos de integración de un bee a la rama principal
+-- Intentos de integración de un bee a la rama objetivo (la `target_branch` de .amalia-root)
 CREATE TABLE integrations (
   id               INTEGER PRIMARY KEY AUTOINCREMENT,
   bee_id           INTEGER NOT NULL REFERENCES bees(id),
-  task_id          INTEGER REFERENCES tasks(id),     -- tarea que originó el commit, si aplica
-  commit_sha       TEXT,                             -- commit específico, o NULL = último de la rama del bee
-  target_branch    TEXT NOT NULL DEFAULT 'main',
+  task_id          INTEGER REFERENCES tasks(id),     -- tarea de un cherry-pick puntual; NULL en un merge de rama completa
+  covered_tasks    TEXT,                             -- JSON: ["TASK-001","TASK-007"] derivado de los trailers 'Amalia-Task:' de los commits integrados
+  commit_sha       TEXT,                             -- commit específico, o NULL = todos los commits nuevos de la rama del bee
+  target_branch    TEXT NOT NULL,                    -- se toma de .amalia-root (target_branch); NO se hardcodea 'main'
   status           TEXT NOT NULL DEFAULT 'pending',  -- 'pending'|'success'|'conflict'|'aborted'
   conflicting_files TEXT,                            -- JSON: ["path1", "path2"] cuando status='conflict'
   resolved_by      TEXT,                              -- 'amalia' | nombre de quien resolvió manualmente
@@ -312,7 +319,7 @@ CREATE TABLE integrations (
 -- (semántica Last-Event-ID), antes de volver a escuchar en vivo.
 CREATE TABLE events (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  type        TEXT NOT NULL,                 -- 'task:created' | 'task:status_changed' | 'bee:registered' | 'bee:heartbeat' | 'integration:conflict' | 'integration:success'
+  type        TEXT NOT NULL,                 -- 'task:created'|'task:status_changed'|'bee:registered'|'bee:heartbeat'|'bee:offline'|'integration:success'|'integration:conflict'|'reconcile:conflict'|'update:conflict'
   payload     TEXT NOT NULL,                 -- JSON
   created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -345,26 +352,29 @@ Esta atomicidad (gracias a que SQLite serializa escrituras) es exactamente lo qu
 
 **Lease en vez de PID.** El reclamo fija un `lease_expires_at` en vez de confiar en un `locked_pid` (un PID solo tiene sentido en el mismo host y se recicla). El bee renueva el lease con cada heartbeat. El `locked_by_instance` identifica la instancia concreta del bee (no solo el nombre), de modo que si dos procesos del mismo bee corren a la vez, solo el dueño del lease vigente puede reportar; un reporte con un `instance_id` que ya no es dueño del lease se rechaza. Esto evita el **trabajo duplicado** cuando un bee lento pierde heartbeats y la Capa 1 re-libera la tarea: al volver, el bee original verá que ya no es dueño del lease y no pisará el resultado del nuevo dueño.
 
-### Asignación de tareas: estática por defecto, pool opcional
+### Asignación de tareas: estática (Fase 1)
 
-Por defecto cada tarea nace con un `assigned_to` fijo (Amalia decide qué bee la hace al descomponer el requerimiento), así que la "cola" tiene como mucho a los **distintos procesos de un mismo bee** compitiendo por reclamarla — el reclamo atómico cubre justo ese caso. Esto **no** es balanceo de carga entre bees: un bee saturado no cede trabajo a otro automáticamente.
+En la Fase 1 cada tarea nace con un `assigned_to` fijo (`NOT NULL`): Amalia decide qué bee la hace al descomponer el requerimiento. Por eso la "cola" tiene como mucho a los **distintos procesos de un mismo bee** compitiendo por reclamarla — el reclamo atómico cubre justo ese caso. Esto **no** es balanceo de carga entre bees: un bee saturado no cede trabajo a otro automáticamente, y reasignar una tarea (p. ej. al dar de baja un bee, ver "Baja segura de un bee") significa cambiar su `assigned_to` a **otro bee nombrado**, no a un pool anónimo.
 
-Para casos donde sí se quiere reparto dinámico, se admite un **pool por rol**: una tarea puede crearse con `assigned_to = NULL` y un `role` objetivo; cualquier bee de ese rol que esté `idle` puede reclamarla (el `UPDATE` atómico añade `WHERE assigned_to IS NULL AND :bee_role = role`). Amalia o el operador deciden por tarea si va asignada o al pool. `amalia kill` usa esta vía para devolver al pool las tareas `pending` de un bee que se da de baja.
+> **Reparto dinámico (pool por rol) — Fase 2.** Permitir tareas sin dueño (`assigned_to = NULL`) que cualquier bee de un `role` reclame requiere hacer `assigned_to` nullable y añadir una columna `role` a `tasks`/`bees`; queda **fuera del alcance de la Fase 1** para no romper la invariante de asignación estática del esquema actual. Se diseñará en el documento de Fase 2.
 
 ### Ciclo de vida de una tarea
 
 ```
 pending → (claim atómico) → in_progress → completed
                                        └─→ failed → (si attempts < max_attempts) → pending
-                                                 └─→ (si attempts >= max_attempts) → blocked
-pending/in_progress → blocked  (dependencias no resueltas o falladas, o reintentos agotados)
-in_progress → pending  (lease vencido: bee caído, ver más abajo)
+                                                 └─→ (si attempts >= max_attempts) → blocked (block_reason='retries_exhausted')
+pending/in_progress → blocked  (block_reason: 'deps_unresolved' | 'upstream_failed' | 'retries_exhausted' | 'timeout')
+in_progress → pending  (lease vencido: bee caído, ver "Heartbeats")
+in_progress → blocked  (watchdog: superó max_run_seconds aunque siguiera latiendo, block_reason='timeout')
+pending/in_progress/blocked → cancelled  (Amalia/operador descarta la tarea o su cadena)
 ```
 
-- Cuando todas las `task_dependencies` de una tarea `blocked` pasan a `completed`, la Capa 1 la mueve automáticamente a `pending` y emite `task:status_changed`.
+- Cuando todas las `task_dependencies` de una tarea `blocked` (con `block_reason='deps_unresolved'`) pasan a `completed`, la Capa 1 limpia `block_reason`, la mueve automáticamente a `pending` y emite `task:status_changed`.
 - Cuando una tarea pasa a `completed` o `failed`, la Capa 1 inserta el evento correspondiente y lo emite por WebSocket; Amalia decide los próximos pasos.
-- **Reintentos.** Un `failed` con `attempts < max_attempts` vuelve a `pending` para reintento automático; al agotar `max_attempts` queda en `blocked` y se emite un evento para que un humano/Amalia intervenga. El `attempts` lo incrementa el reclamo atómico, así que cuenta intentos reales, no reabrimientos manuales.
-- **Propagación de fallo a dependientes.** Si una tarea termina en `failed`/`blocked` definitivo, sus dependientes **no** se desbloquean: la Capa 1 los marca `blocked` con motivo `upstream_failed` y emite `task:status_changed`, en vez de dejarlos esperando para siempre una dependencia que nunca se completará. Amalia decide si reabrir, reasignar o cancelar la cadena.
+- **Reintentos.** Un `failed` con `attempts < max_attempts` vuelve a `pending` para reintento automático; al agotar `max_attempts` queda en `blocked` (`block_reason='retries_exhausted'`) y se emite un evento para que un humano/Amalia intervenga. El `attempts` lo incrementa el reclamo atómico, así que cuenta intentos reales, no reabrimientos manuales.
+- **Watchdog de tareas atascadas.** El heartbeat va en un hilo independiente del trabajo, así que un bee colgado (p. ej. el modelo en un bucle) seguiría renovando el lease indefinidamente. Para cubrirlo, el job de mantenimiento revisa también `max_run_seconds`: si `now - claimed_at > max_run_seconds` la tarea se fuerza a `blocked` con `block_reason='timeout'` **aunque el lease siga vigente**, y se libera para reintento/intervención. `max_run_seconds` se define por tarea (o por un default global de config), separado del `heartbeat_seconds`.
+- **Propagación de fallo a dependientes.** Si una tarea termina en `failed`/`blocked` definitivo o `cancelled`, sus dependientes **no** se desbloquean: la Capa 1 los marca `blocked` con `block_reason='upstream_failed'` y emite `task:status_changed`, en vez de dejarlos esperando para siempre una dependencia que nunca se completará. Amalia decide si reabrir, reasignar o `cancelled` la cadena.
 - **Sin ciclos de dependencias.** `POST /tasks` rechaza una tarea cuyo `depends_on` introduzca un ciclo en el grafo de `task_dependencies` (validación previa con recorrido del grafo), evitando deadlocks donde un conjunto de tareas se bloquea mutuamente para siempre.
 
 ### Heartbeats y recuperación de bees caídos
@@ -387,7 +397,8 @@ estado: pending
 asignado_a: database-bee
 prioridad: high
 depende_de: [TASK-000]
-rev: 1                       # contador monotónico; árbitro de la reconciliación
+rev: 1                       # contador monotónico local; +1 en cada cambio que hace el bee
+synced_rev: 1                # rev que tenía la tarea la última vez que se sincronizó con la DB (baseline)
 lock: null                  # { instancia, lease_expires_at } cuando está reclamada
 ultima_sync_db: 2026-06-27T10:00:00Z
 ---
@@ -465,39 +476,57 @@ Si `amalia.db` o el Orchestrator API caen, toda la colmena entra en **modo degra
 
 1. Cada bee ya tiene su(s) tarea(s) asignada(s) como archivos `tasks/<slug>.task.md` locales — puede seguir reclamando (marcando `Lock` localmente), ejecutando y reportando en su `tasks/<slug>.result.md` local sin depender de la base, y actualizando sus resúmenes `tasks/tasks.md`/`tasks/results.md`.
 2. Amalia, si también pierde la API, puede seguir leyendo los `tasks/results.md` (resumen) de cada worktree directamente (son archivos en el mismo filesystem/worktrees) para decidir próximos pasos, y entrar al `.result.md` de detalle si necesita más contexto.
-3. Al recuperarse el Orchestrator API, corre una **reconciliación** que **compara el `rev` (contador monotónico), no timestamps** — los relojes de los distintos worktrees pueden diferir y `datetime('now')` vs. la marca del archivo no son comparables de forma fiable. Por cada tarea, gana el lado con el `rev` más alto:
-   - Si el `rev` del archivo local supera al de la base (la tarea avanzó de estado o se generó un resultado mientras la DB estaba caída), la Capa 1 aplica el archivo a la base (`INSERT`/`UPDATE`), iguala el `rev` y emite los eventos correspondientes.
-   - Si el `rev` de la base supera al del archivo (p. ej. Amalia/dashboard cambió el estado vía API mientras el worktree estaba aislado), la Capa 1 reescribe el frontmatter del archivo local desde la base.
+3. Al recuperarse el Orchestrator API, corre una **reconciliación** que **compara revisiones, no timestamps** — los relojes de los distintos worktrees pueden diferir y `datetime('now')` vs. la marca del archivo no son comparables de forma fiable. La clave es el **baseline `synced_rev`** (el `rev` que tenía la tarea la última vez que archivo y DB estuvieron de acuerdo). Por cada tarea se mira si cada lado avanzó respecto a ese baseline:
+   - **Solo el archivo avanzó** (`rev_local > synced_rev` y `rev_db == synced_rev`): el bee progresó offline. La Capa 1 aplica el archivo a la base (`INSERT`/`UPDATE`), fija `rev_db = rev_local` y `synced_rev = rev_local`, y emite los eventos correspondientes.
+   - **Solo la DB avanzó** (`rev_db > synced_rev` y `rev_local == synced_rev`): Amalia/dashboard cambió el estado vía API mientras el worktree estaba aislado. La Capa 1 reescribe el frontmatter local desde la base y actualiza `synced_rev`.
+   - **Ambos avanzaron** (`rev_local > synced_rev` **y** `rev_db > synced_rev`): conflicto real de doble escritor. Comparar solo "quién tiene el `rev` más alto" no sirve aquí (pueden incluso coincidir en valor con contenido distinto). La Capa 1 **no descarta ningún lado**: emite **`reconcile:conflict`** en `events` con ambas versiones para que Amalia/un humano decida, y deja la tarea marcada hasta su resolución.
    - Si la base tiene tareas nuevas creadas por Amalia que el worktree no recibió, la Capa 1 las escribe ahora como nuevo `tasks/<slug>.task.md` en ese bee, y agrega la fila en `tasks/tasks.md`.
-4. **Sobre los escritores concurrentes.** No es del todo cierto que "solo el bee asignado toca una tarea": el dashboard (`PATCH /tasks/:id/status`), el desbloqueo automático por dependencias y un eventual reasignado por Amalia también la modifican. Por eso la reconciliación **no asume un único escritor** y resuelve por `rev`. Aun así, los casos verdaderamente concurrentes se acotan por diseño:
+4. **Sobre los escritores concurrentes.** No es del todo cierto que "solo el bee asignado toca una tarea": el dashboard (`PATCH /tasks/:id/status`), el desbloqueo automático por dependencias y un eventual reasignado por Amalia también la modifican. Por eso la reconciliación **no asume un único escritor** y usa el baseline `synced_rev` para distinguir "avance de un solo lado" (resoluble) de "conflicto de ambos lados" (requiere decisión). Aun así, los casos verdaderamente concurrentes se acotan por diseño:
    - El **cuerpo de trabajo** (avance, resultado) lo escribe solo el bee asignado → ahí no hay fusión de contenido, solo "quién va más adelantado".
-   - Los **cambios administrativos** de estado (cancelar, reabrir, reasignar) los hace la API y **suben el `rev`**, de modo que ganan sobre una réplica local desactualizada y se propagan al archivo en la reconciliación.
-   - Un cambio administrativo que colisione con avance local real del bee (ambos lados tocaron la misma tarea durante el aislamiento) se marca como **`reconcile:conflict`** en `events` para que Amalia/un humano lo revise, en lugar de descartar silenciosamente un lado.
+   - Los **cambios administrativos** de estado (cancelar, reabrir, reasignar) los hace la API y suben el `rev` de la base; si el bee no tocó la tarea offline, ganan limpiamente.
+   - Solo cuando ambos avanzaron desde el baseline se emite `reconcile:conflict`, en lugar de descartar silenciosamente un lado.
 
-### Mantener la rama de integración al día (`amalia update`)
+### Rama objetivo (`target`) y puesta al día (`amalia update`)
 
-El worktree de Amalia vive sobre una **rama de integración** (puede ser la propia `main`/rama actual del repo padre, o una rama dedicada tipo `amalia/integration` si se prefiere no tocar `main` hasta el `git push` final — la especificación no impone cuál, pero sí que sea **una sola** y que Amalia la mantenga siempre al día). El trabajo de Amalia no es solo recibir commits de los bees: también debe traer lo nuevo que entra a `main` desde fuera del enjambre (otros desarrolladores, otra integración ya empujada).
+Todos los worktrees del panal — el de Amalia y el de cada bee — **nacen de una única rama objetivo (`target`)**: la rama en la que estaba el repositorio padre al ejecutar `amalia init` (`main`, `master`, `feature/task001`, etc.). Esa rama queda registrada en `.amalia-root` (`target_branch`) y es a la vez la **base** de los worktrees y el **destino** de la integración. La especificación no impone que sea `main`; impone que sea **una sola**, declarada explícitamente, y que Amalia la mantenga al día.
+
+El worktree de Amalia vive sobre una rama de integración derivada de `target` (puede ser la propia `target` o una dedicada como `amalia/integration`). El trabajo de Amalia no es solo recibir commits de los bees: también debe traer lo nuevo que entre a `target` desde fuera del enjambre (otros desarrolladores, otra integración ya empujada).
+
+**Cambio de rama objetivo.** Si el repositorio padre cambia de rama (p. ej. el programador pasa de `main` a `feature/task002`), Amalia lo detecta comparando la rama actual del repo padre contra el `target_branch` de `.amalia-root`. Lo reporta como un evento y, tras confirmación, actualiza `.amalia-root` y rebasea la rama de integración sobre la nueva base.
 
 `amalia update`:
-1. `git fetch` sobre el remoto del repositorio padre.
-2. `git merge --ff-only origin/main` (o la rama actual configurada) sobre la rama de integración. Si no es fast-forward (alguien movió `main` con commits que no son ancestros directos), Amalia **no fuerza un merge automático**: lo marca como una inconsistencia (`integrations` con un `status` dedicado, o un evento `update:conflict`) para que el humano decida cómo traer esos cambios.
-3. Este paso se ejecuta antes de cada `amalia integrate` (para integrar siempre sobre la base más reciente) y también puede dispararse manualmente o en el job de mantenimiento periódico de la Capa 1.
+1. `git fetch` sobre el remoto del repositorio padre (si `target` tiene upstream).
+2. `git rebase <target>` sobre la rama de integración de Amalia. Se usa **rebase** (no `merge --ff-only`) precisamente porque la rama de integración **diverge** de `target`: acumula los `git merge --no-ff` de los bees (ver "Integración"), así que nunca sería un fast-forward. El rebase replanta esos commits de integración sobre la punta más reciente de `target`.
+3. Si el rebase **no se resuelve con comandos básicos** (hay conflictos), Amalia **no los repara**: aborta el rebase (`git rebase --abort`), deja la rama como estaba y **marca una inconsistencia** (evento `update:conflict` + fila en `integrations`/registro equivalente) para que el **programador** la resuelva manualmente.
+4. Este paso se ejecuta antes de cada `amalia integrate` (para integrar siempre sobre la base más reciente) y también puede dispararse manualmente o en el job de mantenimiento periódico de la Capa 1.
 
-Esto es consistente con el límite de Amalia: **no repara inconsistencias de código** — si actualizar la rama de integración no es trivial (conflicto con `main`), lo señala y se detiene, en vez de intentar resolverlo por su cuenta.
+Esto es consistente con el límite de Amalia: **no repara inconsistencias de código** — si poner la rama de integración al día no es trivial (conflicto con `target`), lo señala y se detiene, en vez de intentar resolverlo por su cuenta. La resolución es responsabilidad del programador.
 
-### Integración a la rama principal (`amalia integrate`)
+### Integración a la rama objetivo (`amalia integrate`)
 
-Los bees nunca hacen merge de su propio trabajo: solo Amalia integra, usando comandos de Git estándar (`git merge`/`git cherry-pick`) desde su propio worktree (`honeycomb/amalia/`), que apunta a la rama principal del repositorio original. El resultado de `amalia integrate` repetido sobre cada bee es, en esencia, un **compendio ordenado** de los cambios de todos los bees sobre la rama de integración — Amalia no agrega código propio en ningún punto de este proceso.
+Los bees nunca hacen merge de su propio trabajo: solo Amalia integra, usando comandos de Git estándar (`git merge`/`git cherry-pick`) desde su propio worktree (`honeycomb/amalia/`), que apunta a la rama de integración derivada de la **rama objetivo (`target`)** del repositorio (ver "Rama objetivo"). El resultado de `amalia integrate` repetido sobre cada bee es, en esencia, un **compendio ordenado** de los cambios de todos los bees sobre la rama de integración — Amalia no agrega código propio en ningún punto de este proceso.
 
-**Precondiciones e invariantes (la integración es serial).** El worktree de Amalia tiene **un solo árbol de trabajo** sobre la rama principal, así que las integraciones **no pueden solaparse**:
+**Convención tarea↔commit.** Cada commit que hace un bee lleva un *trailer* en su mensaje que lo liga a la tarea que lo originó:
+
+```
+Implementa entidad ExperimentRun
+
+Amalia-Task: TASK-001
+```
+
+Esto resuelve el mapeo cuando una integración cubre varias tareas:
+- En un **cherry-pick puntual** (`amalia integrate <bee> <commit>`), la fila de `integrations` guarda ese `commit_sha` y su `task_id`.
+- En un **merge de rama completa** (`amalia integrate <bee>` sin commit), `task_id` queda `NULL` y la Capa 1 rellena `covered_tasks` (JSON) leyendo los trailers `Amalia-Task:` de todos los commits nuevos integrados. Así una sola integración puede declarar correctamente las N tareas que abarca, en vez de forzar una relación 1:1 que no existe.
+
+**Precondiciones e invariantes (la integración es serial).** El worktree de Amalia tiene **un solo árbol de trabajo** sobre la rama de integración, así que las integraciones **no pueden solaparse**:
 - Antes de empezar, la Capa 1 verifica que el worktree de Amalia tenga el **working tree limpio** (`git status --porcelain` vacío). Si hay un conflicto previo sin resolver (o cualquier cambio sin commitear), `amalia integrate` se rehúsa con un mensaje claro en vez de lanzar un `git merge` que fallaría de forma confusa.
 - La Capa 1 toma un **lock de integración** (a lo sumo una integración `pending`/`conflict` a la vez). Un segundo `integrate` mientras hay uno en curso o un conflicto abierto se rechaza, no se encola ciegamente.
 - Mientras una integración deja el árbol en conflicto, **toda la cola de integración queda en pausa** hasta que un humano resuelva o aborte: es intencional, pero conviene saber que es un punto de serialización.
 
 **`amalia integrate <nombre-bee> [<commit>]`**:
 1. Crea una fila en `integrations` con `status='pending'` (tras pasar las precondiciones anteriores).
-2. Si se da `<commit>`, Amalia ejecuta `git cherry-pick <commit>` sobre la rama principal; si no se da, integra el último commit (o todos los commits nuevos) de la rama del worktree del bee con `git merge --no-ff <rama-del-bee>`.
-3. **Si no hay conflictos**: el merge/cherry-pick se completa, `integrations.status` pasa a `success`, se emite `integration:success`. El commit queda en la rama principal del worktree de Amalia, listo para que un humano decida cuándo hacer `git push`.
+2. Si se da `<commit>`, Amalia ejecuta `git cherry-pick <commit>` sobre la rama de integración; si no se da, integra todos los commits nuevos de la rama del worktree del bee con `git merge --no-ff <rama-del-bee>`.
+3. **Si no hay conflictos**: el merge/cherry-pick se completa, `integrations.status` pasa a `success`, se emite `integration:success`. El commit queda en la rama de integración del worktree de Amalia, listo para que un humano decida cuándo hacer `git push` a `target`.
 4. **Si hay conflictos**: Git deja el merge a medias (working tree con marcadores `<<<<<<<`). Amalia detecta esto (`git status` reporta `UU`/conflicto), **no intenta resolverlo**, y:
    - Guarda en `integrations` el `status='conflict'` junto con la lista de `conflicting_files`.
    - Emite el evento `integration:conflict` (vía WebSocket y bitácora `events`) para que quede visible en `amalia check`/el dashboard.
@@ -511,8 +540,8 @@ Esto mantiene la separación de responsabilidades: Amalia automatiza la parte me
 ### Baja segura de un bee (`amalia kill`)
 
 `amalia kill` es destructivo: elimina el `git worktree`, la carpeta `tasks/`, el token y el registro en `bees`. Para no perder trabajo:
-- **Rehúsa por defecto si la rama del bee tiene commits sin integrar** a la rama principal (`git cherry main <rama-del-bee>` no vacío) o tareas `in_progress`/`pending`. Lista qué quedaría sin integrar y pide `--force` explícito para proceder de todos modos.
-- Antes de borrar, ofrece reasignar las tareas `pending` del bee a otro bee del mismo rol (o devolverlas al pool, ver "Asignación de tareas").
+- **Rehúsa por defecto si la rama del bee tiene commits sin integrar** a la rama objetivo (`git cherry <target> <rama-del-bee>` no vacío, con `<target>` tomado de `.amalia-root`) o tareas `in_progress`/`pending`. Lista qué quedaría sin integrar y pide `--force` explícito para proceder de todos modos.
+- Antes de borrar, ofrece **reasignar las tareas `pending` del bee a otro bee nombrado** (en Fase 1 la asignación es estática: se cambia su `assigned_to`, no se devuelven a un pool anónimo — ver "Asignación de tareas").
 - El borrado del worktree usa `git worktree remove` (no `rm -rf`), de modo que Git valide que no haya cambios sin guardar, salvo `--force`.
 
 ## Capa 3 — Modelo de Ejecución (Motores de Agente)
@@ -568,6 +597,7 @@ Especialista en base de datos y modelos JPA.
 ## Convención de Trabajo
 - Cada tarea asignada vive como un par de archivos en `tasks/`: `<slug>.task.md` (especificación, editable por el propio agente mientras trabaja) y `<slug>.result.md` (reporte al completarla).
 - El `<slug>` se deriva del nombre corto de la tarea (ej. `crear-tabla-events`), no del ID numérico.
+- **Cada commit DEBE incluir el trailer `Amalia-Task: <TASK-ID>`** en su mensaje, para que `amalia integrate` pueda ligar el commit a la tarea que lo originó (ver Capa 0 → "Convención tarea↔commit").
 - Al terminar (o avanzar significativamente) una tarea, el agente DEBE actualizar también los resúmenes generales `tasks/tasks.md` y `tasks/results.md` — son los únicos archivos que Amalia lee por defecto.
 - Después de actualizar los archivos locales, sincronizar con el Orchestrator API (`/claim`, `/results`) salvo que esté en modo degradado (ver Capa 0).
 ```
@@ -654,21 +684,27 @@ Todas las rutas exigen `Authorization: Bearer <token>` (ver "Seguridad" más aba
 - `PATCH /api/orchestrator/integrations/:id/resolve` — marcar una integración en conflicto como resuelta (`resolved_by`, `status` final)
 
 ### WebSocket (Socket.io)
-- Eventos: `task:created`, `task:status_changed`, `bee:registered`, `bee:heartbeat`, `bee:offline`, `integration:success`, `integration:conflict`, `reconcile:conflict`
+- **Autenticación obligatoria en el handshake**: el cliente envía el mismo `Bearer <token>` (en `auth` de la conexión Socket.io); una conexión sin token válido se rechaza. Sin esto, cualquier proceso local podría suscribirse y leer todos los eventos (descripciones de tareas, rutas de archivos, nombres de bees) → fuga de información. La identidad del socket se deriva del token, igual que en REST.
+- Eventos: `task:created`, `task:status_changed`, `bee:registered`, `bee:heartbeat`, `bee:offline`, `integration:success`, `integration:conflict`, `reconcile:conflict`, `update:conflict`
 - Cada evento lleva el `id` de la fila en `events`; el cliente lo guarda como cursor y, al reconectar, pide `GET /events?since=<id>` para no perderse nada (ver tabla `events` en Capa 0).
 - Es la forma recomendada en que Amalia y los bees se enteran de cambios sin hacer polling constante; el polling vía REST queda como respaldo si el cliente no mantiene conexión WS.
 
 ### Job de mantenimiento interno
-- Cada `N` segundos: revisa bees con heartbeat vencido → los marca `offline` y libera sus tareas `in_progress`.
-- Cada vez que una tarea pasa a `completed`: revisa `task_dependencies` y desbloquea las tareas `blocked` que ya cumplen todas sus dependencias.
+- Cada `N` segundos: revisa bees con heartbeat/lease vencido → los marca `offline` y libera sus tareas `in_progress`.
+- Cada `N` segundos: **watchdog de tareas atascadas** → si una tarea lleva en `in_progress` más de `max_run_seconds` (medido desde `claimed_at`) la fuerza a `blocked` con `block_reason='timeout'`, aunque el lease siga vigente (cubre el caso de un bee colgado cuyo hilo de heartbeat sigue latiendo).
+- Cada vez que una tarea pasa a `completed`: revisa `task_dependencies` y desbloquea las tareas `blocked` (`block_reason='deps_unresolved'`) que ya cumplen todas sus dependencias.
+- **Retención de `events`/`results`** (periódica): poda filas de `events` por debajo del **cursor mínimo confirmado por todos los clientes** y más viejas que un umbral configurable (p. ej. N días), para que la bitácora no crezca sin límite; análogamente conserva los últimos `K` intentos por tarea en `results` y archiva el resto. Es el contrapeso a usar la propia DB como cola + bitácora.
 
 ### Seguridad
 
 Aunque la API corra en `localhost`, **cualquier proceso o usuario de la máquina puede alcanzarla**, y algunos endpoints disparan acciones sensibles (`POST /integrations` ejecuta `git merge`/`cherry-pick`). Por eso:
 
-- **Autenticación por token de bee.** `amalia hatch` (o el primer `register`) emite un token aleatorio por bee; la base guarda solo su **hash** (`bees.token_hash`), nunca el token en claro. El token se entrega al bee vía un archivo de permisos restringidos en `orchestrator-api/.secrets/<bee>.token` (fuera de Git) o una variable de entorno, y el bee lo manda como `Authorization: Bearer <token>` en cada llamada.
+- **Bootstrap de la autenticación (sin huevo-y-gallina).** El token existe **antes** del primer contacto del agente, así que ningún endpoint queda abierto:
+  - `amalia init` genera el **token de operador de Amalia** y lo guarda en `orchestrator-api/.secrets/amalia.token` (perms `0600`, fuera de Git). Solo su hash va a `bees` (fila `amalia`).
+  - `amalia hatch` **pre-crea la fila del bee y su token** en `.secrets/<bee>.token` antes de lanzar el motor. Cuando el bee arranca, lee su token del archivo y con él autentica su primer `POST /bees/register` (que actualiza datos, no crea identidad). Si llega un `register` con un token que no corresponde a una fila pre-creada por `hatch`, se rechaza.
+- **Autenticación por token en cada llamada.** La base guarda solo el **hash** del token (`bees.token_hash`), nunca el token en claro; el cliente lo manda como `Authorization: Bearer <token>` en REST y en el handshake WebSocket.
 - **El `bee_id` se deriva del token, no del body.** La API ignora cualquier `bee_id`/`bee_name` que el cliente afirme y usa el del token autenticado. Esto impide que un bee **reclame o reporte en nombre de otro**. El `/claim` y `/results` solo proceden si el token corresponde al `assigned_to`/`locked_by` de la tarea.
-- **Endpoints administrativos separados.** `PATCH /tasks/:id/status`, `POST /integrations`, `kill` y demás operaciones de orquestación exigen el **token de Amalia** (rol orquestador), no el de un bee cualquiera. El dashboard usa este mismo token de operador.
+- **Endpoints administrativos separados.** `PATCH /tasks/:id/status`, `POST /integrations`, `kill` y demás operaciones de orquestación exigen el **token de operador de Amalia**, no el de un bee cualquiera.
 - **El servidor escucha solo en `127.0.0.1`** por defecto (no `0.0.0.0`); exponerlo a la red es una decisión explícita de configuración, no el default.
 - **Validación y saneo de toda entrada** (defensa contra inyección y path traversal):
   - `nombre-bee` debe cumplir `^[a-z][a-z0-9-]*-bee$`; Amalia y otros nombres reservados, una whitelist conocida.
@@ -676,7 +712,8 @@ Aunque la API corra en `localhost`, **cualquier proceso o usuario de la máquina
   - `commit` debe ser un SHA válido (`^[0-9a-f]{7,40}$`) o un nombre de rama validado; nunca se interpola en una shell.
   - Toda invocación de Git se hace con **argumentos en array** (`execFile`/`spawn`, no `exec` con string), de modo que ningún valor controlado por el usuario llegue a un intérprete de shell.
   - Las rutas finales se resuelven y se verifica que queden **dentro de `honeycomb/`** antes de leer/escribir (anti path-traversal).
-- **Aislamiento de secretos entre motores.** Cuando el lanzador arranca el subproceso de un bee, le pasa **solo** la variable declarada en su `auth_env` (y las imprescindibles), no todo el entorno del proceso padre — así un bee no puede leer las API keys de otro.
+- **Aislamiento de secretos entre motores (alcance realista).** El lanzador pasa al subproceso de un bee **solo** la variable declarada en su `auth_env` (y las imprescindibles), no todo el entorno del padre, y los archivos de `.secrets/` se crean con perms `0600`. Esto reduce la **exposición casual** (un bee no ve por entorno las keys de otro), pero **no es aislamiento fuerte**: todos los procesos corren bajo el mismo usuario del SO y podrían, en principio, leer `.secrets/` en disco. Un aislamiento real (un bee no puede tocar los secretos de otro) requiere usuarios del SO o contenedores separados por bee — fuera del alcance de la Fase 1, anotado como mejora futura.
+- **El dashboard no incrusta el token de operador.** El dashboard (Capa 2) habla solo con la API local; el token de operador se carga desde la configuración local del humano (o vía un login que la API responde con una **sesión corta**), **nunca** embebido en el bundle de JS servido ni guardado en `localStorage` sin más, para no exponer un credencial poderoso a XSS o a inspección del cliente.
 - **Rate limiting básico** en `register`/`heartbeat`/`claim` para que un cliente defectuoso no sature la única escritura de SQLite.
 
 ### Stack
@@ -691,7 +728,7 @@ El binario `amalia` es el cliente principal del Orchestrator API. Se ejecuta nor
 | Comando | Qué hace |
 |---|---|
 | `amalia init [--honeycomb-path <ruta>]` | Valida precondiciones (Git instalado y con soporte de `worktree`, directorio es un repo Git, Node.js compatible) y, si todas pasan, hace el bootstrap: crea el panal (`honeycomb/` por defecto, o `<ruta>` si se indica), el worktree `amalia/`, `orchestrator-api/` y `amalia.db` con el esquema aplicado; escribe la ruta elegida en `.amalia-root`; agrega `.amalia-root` y la ruta del panal al `.gitignore` del repo. |
-| `amalia start` | Levanta el Orchestrator API (Capa 1) como proceso de fondo (REST + WebSocket) sobre `amalia.db`. |
+| `amalia start` | Levanta el Orchestrator API (Capa 1) como proceso de fondo (REST + WebSocket) sobre `amalia.db`. Antes de aceptar conexiones **verifica `schema_version`**: si el `.db` quedó atrás respecto al binario, se rehúsa a arrancar y remite a `amalia doctor` (que aplica las migraciones), en vez de operar contra un esquema viejo. |
 | `amalia stop` | Detiene el Orchestrator API. |
 | `amalia hatch <nombre-bee> [--role "<resumen>"] [--engine claude-code\|opencode\|copilot-cli\|codex-cli\|ollama] [--branch <rama>]` | "Hace eclosionar" un bee nuevo: valida que `<nombre-bee>` cumpla `^[a-z][a-z0-9-]*-bee$` (ver Capa 1 → Seguridad), crea el `git worktree` en `honeycomb/<nombre-bee>/`, genera sus `AGENTS.md`, `bee.md` y la carpeta `tasks/` (con `tasks.md` y `results.md`) a partir de templates, emite un token de bee en `orchestrator-api/.secrets/` y lo registra en la tabla `bees`. |
 | `amalia kill <nombre-bee>` | Elimina un bee: borra su `git worktree`, sus archivos locales, su token y su registro en `bees` (acción destructiva, pide confirmación). **Rehúsa si la rama del bee tiene commits sin integrar**, salvo `--force` (ver Capa 0 → "Baja segura de un bee"). |
@@ -700,8 +737,8 @@ El binario `amalia` es el cliente principal del Orchestrator API. Se ejecuta nor
 | `amalia task list [--status pending,in_progress,...] [--bee <nombre-bee>]` | Lista tareas con filtros. |
 | `amalia task show <task-id>` | Detalle de una tarea: estado, lock, dependencias, resultado si existe. |
 | `amalia logs <nombre-bee>` | Muestra el historial de `tasks/results.md`/eventos de un bee. |
-| `amalia update` | Trae a la rama de integración de Amalia lo nuevo de `main` (`git fetch` + `git merge --ff-only`). Si no es fast-forward, lo marca como inconsistencia para revisión humana — no fuerza un merge. |
-| `amalia integrate <nombre-bee> [<commit>]` | Integra a la rama de integración el trabajo de un bee (merge o cherry-pick) — Amalia solo arma el compendio de commits, nunca escribe ni repara código. Si hay conflictos, los reporta en `integrations` y los deja para resolución humana — no intenta resolverlos. |
+| `amalia update` | Trae a la rama de integración de Amalia lo nuevo de la rama objetivo `target` (`git fetch` + `git rebase <target>`, leída de `.amalia-root`). Detecta si el repo padre cambió de rama objetivo. Si el rebase no se resuelve con comandos básicos (conflictos), aborta y lo marca como inconsistencia (`update:conflict`) para que el programador la resuelva — no fuerza nada. |
+| `amalia integrate <nombre-bee> [<commit>]` | Integra a la rama de integración el trabajo de un bee (merge `--no-ff` de la rama, o cherry-pick de un commit) sobre la base `target` — Amalia solo arma el compendio de commits, nunca escribe ni repara código. Registra las tareas cubiertas (`covered_tasks` vía trailers `Amalia-Task:`). Si hay conflictos, los reporta en `integrations` y los deja para resolución humana — no intenta resolverlos. |
 | `amalia integrate --resolve <integration-id>` | Marca una integración en conflicto como resuelta, después de que un humano corrigió el conflicto con Git manualmente. |
 | `amalia sync` | Fuerza la reconciliación archivo↔DB descrita en la Capa 0 (útil tras un modo degradado). |
 | `amalia doctor` | Revalida las precondiciones del entorno (Git instalado/con `worktree`), compara `schema_version` con la del binario y **aplica migraciones incrementales** si el `amalia.db` quedó atrás tras actualizar el paquete, limpia leases vencidos, detecta bees con heartbeat vencido y verifica consistencia entre archivos locales y la base (incluido el frontmatter de cada `tasks/<slug>.task.md`). |
@@ -722,19 +759,20 @@ Stack sugerido: HTML + JS vanilla o un framework ligero (Svelte/React), consumie
 ## Roadmap de Fases
 
 ### Fase 1 — Modelo de Datos y Orchestrator API (Capas 0+1, base obligatoria)
-- [ ] Esquema SQLite (`schema_version`, `bees`, `tasks`, `task_dependencies`, `results`, `integrations`, `events`) con `rev`, `attempts`, lease y `token_hash`
+- [ ] Esquema SQLite (`schema_version`, `bees`, `tasks`, `task_dependencies`, `results`, `integrations`, `events`) con `rev`, `attempts`, `block_reason`, `max_run_seconds`, lease y `token_hash`; status sin `claimed`, con `cancelled`
 - [ ] WAL + `busy_timeout` + `BEGIN IMMEDIATE` en las escrituras
-- [ ] Servicio Node.js/TypeScript con las rutas REST descritas
-- [ ] **Seguridad**: tokens por bee (hash en DB), identidad derivada del token, endpoints administrativos con token de Amalia, escucha en `127.0.0.1`, validación de nombres/slugs/commits y Git sin shell
+- [ ] Servicio Node.js/TypeScript con las rutas REST descritas; `amalia start` valida `schema_version` antes de aceptar conexiones
+- [ ] **Seguridad**: bootstrap de tokens (`init` → token de Amalia, `hatch` pre-crea token de bee), identidad derivada del token en REST **y** en el handshake WebSocket, endpoints administrativos con token de Amalia, escucha en `127.0.0.1`, validación de nombres/slugs/commits y Git sin shell
 - [ ] Reclamo atómico de tareas con lease (`/tasks/:id/claim`) e incremento de `attempts`
-- [ ] Job de heartbeats/leases vencidos, desbloqueo de dependencias, reintentos (`max_attempts`) y propagación de fallo a dependientes (`upstream_failed`)
+- [ ] Job de mantenimiento: heartbeats/leases vencidos, **watchdog `max_run_seconds`**, desbloqueo de dependencias, reintentos (`max_attempts`), propagación de fallo a dependientes (`block_reason='upstream_failed'`) y **retención de `events`/`results`**
 - [ ] Validación de ciclos de dependencia en `POST /tasks`
-- [ ] Lógica de integración (`/integrations`) serial, con precondición de árbol limpio, lock de integración y detección de conflictos vía `git status`
+- [ ] **Rama objetivo (`target`)**: registro en `.amalia-root`, `amalia update` por rebase, detección de cambio de rama y marcado de `update:conflict`
+- [ ] Lógica de integración (`/integrations`) serial, con precondición de árbol limpio, lock de integración, detección de conflictos vía `git status`, y `covered_tasks` por trailers `Amalia-Task:`
 - [ ] WebSocket (Socket.io) con los eventos descritos + `GET /events?since=<id>` (replay por cursor)
-- [ ] Replicación automática DB → `tasks/<slug>.task.md` (frontmatter estricto) y bee → `tasks/<slug>.result.md` + resúmenes `tasks.md`/`results.md`, con regla de escritor único por archivo
-- [ ] Job de reconciliación por `rev` al reconectar (modo degradado), con `reconcile:conflict`
+- [ ] Replicación automática DB → `tasks/<slug>.task.md` (frontmatter estricto con `rev`/`synced_rev`) y bee → `tasks/<slug>.result.md` + resúmenes `tasks.md`/`results.md`, con regla de escritor único por archivo
+- [ ] Job de reconciliación por baseline `synced_rev` al reconectar (modo degradado), con `reconcile:conflict` cuando ambos lados avanzan
 - [ ] Migraciones de esquema dirigidas por `schema_version` (en `amalia doctor`)
-- [ ] Templates de `AGENTS.md`, `bee.md` (incluyendo `## Convención de Trabajo`), y de la carpeta `tasks/`
+- [ ] Templates de `AGENTS.md`, `bee.md` (incluyendo `## Convención de Trabajo` y el trailer `Amalia-Task:`), y de la carpeta `tasks/`
 - [ ] Convención de nomenclatura `<área>-bee` y generación de slugs únicos por worktree
 
 ### Fase 2 — Integración con motores (Capa 3)
@@ -770,7 +808,8 @@ Stack sugerido: HTML + JS vanilla o un framework ligero (Svelte/React), consumie
 - **Cola de mensajes embebida**: la tabla `tasks` + reclamo atómico (`UPDATE ... WHERE status='pending'`) cumple el rol de un broker tipo RabbitMQ sin añadir un segundo servicio de infraestructura.
 - **Multi-motor**: cada worktree declara su motor en `bee.md`, separado del contrato de rol en `AGENTS.md`. Cambiar de motor no afecta el contrato de negocio.
 - **Seguridad de credenciales**: ninguna API key se escribe en `bee.md` ni se versiona en Git; solo se referencian nombres de variables de entorno (`auth_env`).
-- **Detección de bees caídos**: heartbeat (emitido por un hilo/proceso independiente del trabajo) que renueva un **lease**; si el lease vence (`heartbeat_segundos * 3`), el bee se marca `offline` y sus tareas `in_progress` se liberan. El `attempts` evita reintentos en bucle infinito sobre una tarea que tumba a su bee.
+- **Detección de bees caídos**: heartbeat (emitido por un hilo/proceso independiente del trabajo) que renueva un **lease**; si el lease vence (`heartbeat_segundos * 3`), el bee se marca `offline` y sus tareas `in_progress` se liberan. Además, un **watchdog `max_run_seconds`** cubre el caso opuesto (un bee colgado que sigue latiendo): fuerza la tarea a `blocked` (`block_reason='timeout'`) si lleva demasiado en ejecución. El `attempts` evita reintentos en bucle infinito sobre una tarea que tumba a su bee.
+- **Rama objetivo (`target`)**: todos los worktrees nacen de una sola rama base, declarada en `.amalia-root`; Amalia la mantiene al día con `git rebase` (`amalia update`) y, si no es trivial, marca inconsistencia para el programador. Nunca repara conflictos de Git por su cuenta (ver "Rama objetivo").
 - **Escalabilidad**: el diseño actual es **single-host** por construcción (réplica de archivos en el filesystem local, la API escribiendo en los worktrees, y los `git worktree` viviendo todos en la misma máquina). Migrar a multi-host es bastante más que cambiar SQLite por Postgres: habría que resolver el acceso compartido a los worktrees (o repensar la réplica de archivos) y la ejecución remota de Git. La abstracción "todo el mundo habla con la API, nunca con la base" reduce el acoplamiento al motor de BD, pero **no** vuelve el sistema multi-host por sí sola.
 - **Seguridad de la API**: autenticación por token de bee (la identidad se deriva del token, no del body), endpoints administrativos restringidos al token de Amalia, escucha solo en `127.0.0.1`, validación/saneo de nombres, slugs y commits, y ejecución de Git con argumentos en array (sin shell). Ver Capa 1 → "Seguridad".
 - **Separación de responsabilidades en la integración**: Amalia automatiza el merge/cherry-pick mecánico y la detección de conflictos; nunca intenta resolver un conflicto de código por sí misma — eso queda siempre como intervención humana vía Git.
@@ -791,4 +830,4 @@ Stack sugerido: HTML + JS vanilla o un framework ligero (Svelte/React), consumie
 
 ---
 
-*Documento de especificación v13.0 — Se marca explícitamente que todo este documento corresponde a la **Fase 1** del proyecto; la Fase 2 queda pendiente de definir, a iniciar solo cuando la Fase 1 esté terminada y probada. Cambios sobre v11.0: Amalia **no forma parte del repositorio orquestado** — `amalia init` genera/actualiza el `.gitignore` del repo objetivo para excluir el panal completo (`honeycomb/` o la ruta elegida) y `.amalia-root`, y `amalia doctor` verifica que esas líneas no se hayan borrado; **nombre/ruta del panal configurable** vía `--honeycomb-path` en `init`, persistido en `.amalia-root` (que pasa de marcador vacío a archivo de configuración) y consultado por todos los comandos posteriores. Se mantiene todo lo de v11.0 (rama de integración al día con `main`, roles y alcance explícitos, seguridad por token, concurrencia con `rev`/lease, Capa 2 obligatoria, distribución npm, etc.).*
+*Documento de especificación v14.0 (Fase 1) — Cambios sobre v13.0: **rama objetivo (`target`)** registrada en `.amalia-root` como base de todos los worktrees y destino de integración; `amalia update` pasa de `git merge --ff-only` (imposible una vez que la rama de integración diverge) a **`git rebase <target>`**, con detección de cambio de rama y marcado `update:conflict` (resolución humana); `integrations.target_branch` ya no se hardcodea `main`. Coherencia de estados: se elimina `claimed` (el claim salta directo a `in_progress`), se añade `cancelled` y la columna **`block_reason`** (`deps_unresolved`/`upstream_failed`/`retries_exhausted`/`timeout`). **Watchdog `max_run_seconds`** para bees colgados que siguen latiendo. Reconciliación con **baseline `synced_rev`** para detectar de verdad el conflicto de doble escritor. Mapeo **tarea↔commit** por trailer `Amalia-Task:` + `covered_tasks` en `integrations`. **WebSocket autenticado** en el handshake. **Bootstrap de auth** cerrado (`init` crea el token de Amalia; `hatch` pre-crea el del bee). Aislamiento de secretos reformulado a su alcance real; dashboard no incrusta el token de operador. `amalia start` valida `schema_version`; **retención** de `events`/`results`; el **pool por rol** se difiere explícitamente a Fase 2 (Fase 1 = asignación estática); aclaración de que el `.gitignore` oculta directorios de worktree, no ramas/commits. Se mantiene lo de v13.0 (Fase 1 explícita, panal configurable, `.gitignore` automático, seguridad por token, concurrencia con `rev`/lease, Capa 2 obligatoria, distribución npm).*
