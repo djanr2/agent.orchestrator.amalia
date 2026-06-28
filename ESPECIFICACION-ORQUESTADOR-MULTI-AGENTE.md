@@ -374,7 +374,7 @@ pending/in_progress/blocked → cancelled  (Amalia/operador descarta la tarea o 
 - Cuando una tarea pasa a `completed` o `failed`, la Capa 1 inserta el evento correspondiente y lo emite por WebSocket; Amalia decide los próximos pasos.
 - **Reintentos.** Un `failed` con `attempts < max_attempts` vuelve a `pending` para reintento automático; al agotar `max_attempts` queda en `blocked` (`block_reason='retries_exhausted'`) y se emite un evento para que un humano/Amalia intervenga. El `attempts` lo incrementa el reclamo atómico, así que cuenta intentos reales, no reabrimientos manuales.
 - **Watchdog de tareas atascadas.** El heartbeat va en un hilo independiente del trabajo, así que un bee colgado (p. ej. el modelo en un bucle) seguiría renovando el lease indefinidamente. Para cubrirlo, el job de mantenimiento revisa también `max_run_seconds`: si `now - claimed_at > max_run_seconds` la tarea se fuerza a `blocked` con `block_reason='timeout'` **aunque el lease siga vigente**, y se libera para reintento/intervención. `max_run_seconds` se define por tarea (o por un default global de config), separado del `heartbeat_seconds`.
-- **Propagación de fallo a dependientes.** Si una tarea termina en `failed`/`blocked` definitivo o `cancelled`, sus dependientes **no** se desbloquean: la Capa 1 los marca `blocked` con `block_reason='upstream_failed'` y emite `task:status_changed`, en vez de dejarlos esperando para siempre una dependencia que nunca se completará. Amalia decide si reabrir, reasignar o `cancelled` la cadena.
+- **Propagación de fallo a dependientes.** Si una tarea termina en `failed`/`blocked` definitivo o `cancelled`, sus dependientes **no** se desbloquean: la Capa 1 los marca `blocked` con `block_reason='upstream_failed'` y emite `task:status_changed`, en vez de dejarlos esperando para siempre una dependencia que nunca se completará. Amalia decide si reabrir, reasignar o cancelar la cadena (`status='cancelled'`).
 - **Sin ciclos de dependencias.** `POST /tasks` rechaza una tarea cuyo `depends_on` introduzca un ciclo en el grafo de `task_dependencies` (validación previa con recorrido del grafo), evitando deadlocks donde un conjunto de tareas se bloquea mutuamente para siempre.
 
 ### Heartbeats y recuperación de bees caídos
@@ -468,7 +468,7 @@ Reglas de sincronización:
 - Cuando un bee reporta un resultado (`/results`), **primero escribe `tasks/<slug>.result.md`**, agrega/actualiza la fila en `tasks/results.md`, y luego llama a la API. Si la llamada a la API falla, el bee sigue operando solo con los archivos locales — quedan con el campo `rev` local por delante del de la base, marcando que hay cambios pendientes de subir.
 - Esta separación (un par de archivos por tarea + un resumen agregado) evita que `tasks.md`/`results.md` se saturen de información cuando un bee tiene muchas tareas en paralelo o histórico.
 
-> **El bloque de metadatos es de formato estricto.** Como un motor de IA edita libremente la prosa del `.task.md` para anotar progreso, los campos que la reconciliación necesita leer (`ID`, `Estado`, `rev`, `Lock`) viven en un **frontmatter YAML delimitado** al inicio del archivo, no mezclados en el cuerpo. El agente puede escribir lo que quiera **debajo** del frontmatter sin romper el parseo. Si el frontmatter se corrompe, `amalia doctor` lo detecta al verificar consistencia archivo↔DB y reconstruye el bloque desde la base.
+> **El bloque de metadatos es de formato estricto.** Como un motor de IA edita libremente la prosa del `.task.md` para anotar progreso, los campos que la reconciliación necesita leer (`id`, `estado`, `rev`, `synced_rev`, `lock`) viven en un **frontmatter YAML delimitado** al inicio del archivo, no mezclados en el cuerpo. El agente puede escribir lo que quiera **debajo** del frontmatter sin romper el parseo. Si el frontmatter se corrompe, `amalia doctor` lo detecta al verificar consistencia archivo↔DB y reconstruye el bloque desde la base.
 
 ### Modo degradado y reconciliación
 
@@ -650,7 +650,7 @@ Reglas de `bee.md`:
 4. **Publicación**: `POST /api/orchestrator/tasks` por cada tarea, con `assigned_to` y `depends_on` — la Capa 1 persiste en `amalia.db`, crea `tasks/<slug>.task.md` en el worktree destino y agrega la fila en su `tasks/tasks.md`.
 5. **Escucha**: se suscribe al WebSocket (`task:status_changed`, eventos de resultado) o hace polling de `GET /api/orchestrator/tasks?status=completed,failed`. Si la API no responde, puede leer directamente los `tasks/results.md` (resumen) de cada worktree como respaldo.
 6. **Decisión**: ante un resultado, crea nuevas tareas, desbloquea dependientes, o marca el trabajo global como terminado.
-7. **Mantenimiento de la rama de integración**: corre `amalia update` para traer lo nuevo de `main`, y `amalia integrate <bee>` por cada bee con trabajo completado, dejando todo listo (o marcado en conflicto) para el `git push` que decida un humano.
+7. **Mantenimiento de la rama de integración**: corre `amalia update` para traer lo nuevo de la rama objetivo `target` (vía rebase), y `amalia integrate <bee>` por cada bee con trabajo completado, dejando todo listo (o marcado en conflicto) para el `git push` que decida un humano.
 
 ### Ciclo de vida de un Bee
 
@@ -732,7 +732,7 @@ El binario `amalia` es el cliente principal del Orchestrator API. Se ejecuta nor
 | `amalia stop` | Detiene el Orchestrator API. |
 | `amalia hatch <nombre-bee> [--role "<resumen>"] [--engine claude-code\|opencode\|copilot-cli\|codex-cli\|ollama] [--branch <rama>]` | "Hace eclosionar" un bee nuevo: valida que `<nombre-bee>` cumpla `^[a-z][a-z0-9-]*-bee$` (ver Capa 1 → Seguridad), crea el `git worktree` en `honeycomb/<nombre-bee>/`, genera sus `AGENTS.md`, `bee.md` y la carpeta `tasks/` (con `tasks.md` y `results.md`) a partir de templates, emite un token de bee en `orchestrator-api/.secrets/` y lo registra en la tabla `bees`. |
 | `amalia kill <nombre-bee>` | Elimina un bee: borra su `git worktree`, sus archivos locales, su token y su registro en `bees` (acción destructiva, pide confirmación). **Rehúsa si la rama del bee tiene commits sin integrar**, salvo `--force` (ver Capa 0 → "Baja segura de un bee"). |
-| `amalia check [<nombre-bee>]` | Muestra el estado de un bee o de todos: `online/idle/busy/offline`, último heartbeat, tarea actual. Lee de `amalia.db` vía la API; si la API no responde, cae a leer los `tasks/tasks.md`/`tasks/results.md` locales. |
+| `amalia check [<nombre-bee>]` | Muestra el estado de un bee o de todos: `idle/busy/offline` (los valores de `bees.status`), último heartbeat, tarea actual. Lee de `amalia.db` vía la API; si la API no responde, cae a leer los `tasks/tasks.md`/`tasks/results.md` locales. |
 | `amalia task add <nombre-bee> "<descripción>" [--priority high\|medium\|low] [--depends-on TASK-ID]` | Crea una tarea nueva asignada a un bee (lo que hace Amalia al descomponer un requerimiento). |
 | `amalia task list [--status pending,in_progress,...] [--bee <nombre-bee>]` | Lista tareas con filtros. |
 | `amalia task show <task-id>` | Detalle de una tarea: estado, lock, dependencias, resultado si existe. |
