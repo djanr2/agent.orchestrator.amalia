@@ -16,19 +16,20 @@ Pero **la estructura de archivos se mantiene como réplica local en cada worktre
 
 ### Amalia — Orquestador
 
-**Rol**: coordinar el enjambre. Amalia **nunca escribe código de la aplicación**; su trabajo es de gestión y de integración del trabajo ya hecho por los bees.
+**Rol**: coordinar el enjambre y mantener una **rama de integración siempre al día** con `main` (o la rama actual del repositorio padre), donde va preparando los commits de los bees antes de que lleguen a la rama principal. Amalia **nunca escribe código de la aplicación**; su trabajo es de gestión y de integración del trabajo ya hecho por los bees.
 
 Alcance:
 - Analizar el requerimiento general sobre el repositorio original y descomponerlo en tareas.
 - Crear y eliminar bees (`amalia hatch` / `amalia kill`).
 - Publicar tareas y resolver dependencias entre ellas (`amalia task add`, desbloqueo automático).
 - Supervisar el progreso (`amalia check`, `amalia logs`).
-- **Integrar a la rama principal** el trabajo ya completado por un bee (`amalia integrate`, ver más abajo).
-- Reaccionar ante fallos o bloqueos: reasignar, reabrir tareas, marcar conflictos para intervención humana.
+- **Mantener su worktree actualizado respecto a `main`**: trae los cambios nuevos de la rama principal del repositorio padre a su propia rama de integración (`amalia update`, ver Capa 0).
+- **Preparar e integrar en esa rama** los commits ya completados de cada bee (`amalia integrate`, ver más abajo) — es un compendio de los cambios de todos los bees, no código escrito por Amalia.
+- Reaccionar ante fallos o bloqueos: reasignar, reabrir tareas, marcar inconsistencias para intervención humana.
 
 Límites:
-- NO escribe ni edita código de negocio directamente — eso es trabajo exclusivo de los bees, cada uno dentro de su `AGENTS.md`.
-- NO resuelve conflictos de merge de Git — los detecta y los reporta; la resolución es responsabilidad de un humano.
+- NO escribe ni edita código de negocio directamente — eso es trabajo exclusivo de los bees, cada uno dentro de su `AGENTS.md`. El worktree de Amalia nunca tiene código propio: solo es el lugar donde se acumulan, en orden, los commits que los bees ya hicieron.
+- NO repara inconsistencias de código ni resuelve conflictos de merge de Git — **los detecta y los marca como tales**; la reparación es responsabilidad de un humano (el programador).
 - NO decide detalles de implementación dentro del dominio de un bee (cómo modelar una entidad, qué librería usar, etc.) — solo define **qué** se necesita, no **cómo**.
 
 ### Bee — Worker especializado
@@ -443,9 +444,20 @@ Si `amalia.db` o el Orchestrator API caen, toda la colmena entra en **modo degra
    - Los **cambios administrativos** de estado (cancelar, reabrir, reasignar) los hace la API y **suben el `rev`**, de modo que ganan sobre una réplica local desactualizada y se propagan al archivo en la reconciliación.
    - Un cambio administrativo que colisione con avance local real del bee (ambos lados tocaron la misma tarea durante el aislamiento) se marca como **`reconcile:conflict`** en `events` para que Amalia/un humano lo revise, en lugar de descartar silenciosamente un lado.
 
+### Mantener la rama de integración al día (`amalia update`)
+
+El worktree de Amalia vive sobre una **rama de integración** (puede ser la propia `main`/rama actual del repo padre, o una rama dedicada tipo `amalia/integration` si se prefiere no tocar `main` hasta el `git push` final — la especificación no impone cuál, pero sí que sea **una sola** y que Amalia la mantenga siempre al día). El trabajo de Amalia no es solo recibir commits de los bees: también debe traer lo nuevo que entra a `main` desde fuera del enjambre (otros desarrolladores, otra integración ya empujada).
+
+`amalia update`:
+1. `git fetch` sobre el remoto del repositorio padre.
+2. `git merge --ff-only origin/main` (o la rama actual configurada) sobre la rama de integración. Si no es fast-forward (alguien movió `main` con commits que no son ancestros directos), Amalia **no fuerza un merge automático**: lo marca como una inconsistencia (`integrations` con un `status` dedicado, o un evento `update:conflict`) para que el humano decida cómo traer esos cambios.
+3. Este paso se ejecuta antes de cada `amalia integrate` (para integrar siempre sobre la base más reciente) y también puede dispararse manualmente o en el job de mantenimiento periódico de la Capa 1.
+
+Esto es consistente con el límite de Amalia: **no repara inconsistencias de código** — si actualizar la rama de integración no es trivial (conflicto con `main`), lo señala y se detiene, en vez de intentar resolverlo por su cuenta.
+
 ### Integración a la rama principal (`amalia integrate`)
 
-Los bees nunca hacen merge de su propio trabajo: solo Amalia integra, usando comandos de Git estándar (`git merge`/`git cherry-pick`) desde su propio worktree (`honeycomb/amalia/`), que apunta a la rama principal del repositorio original.
+Los bees nunca hacen merge de su propio trabajo: solo Amalia integra, usando comandos de Git estándar (`git merge`/`git cherry-pick`) desde su propio worktree (`honeycomb/amalia/`), que apunta a la rama principal del repositorio original. El resultado de `amalia integrate` repetido sobre cada bee es, en esencia, un **compendio ordenado** de los cambios de todos los bees sobre la rama de integración — Amalia no agrega código propio en ningún punto de este proceso.
 
 **Precondiciones e invariantes (la integración es serial).** El worktree de Amalia tiene **un solo árbol de trabajo** sobre la rama principal, así que las integraciones **no pueden solaparse**:
 - Antes de empezar, la Capa 1 verifica que el worktree de Amalia tenga el **working tree limpio** (`git status --porcelain` vacío). Si hay un conflicto previo sin resolver (o cualquier cambio sin commitear), `amalia integrate` se rehúsa con un mensaje claro en vez de lanzar un `git merge` que fallaría de forma confusa.
@@ -578,6 +590,7 @@ Reglas de `bee.md`:
 4. **Publicación**: `POST /api/orchestrator/tasks` por cada tarea, con `assigned_to` y `depends_on` — la Capa 1 persiste en `amalia.db`, crea `tasks/<slug>.task.md` en el worktree destino y agrega la fila en su `tasks/tasks.md`.
 5. **Escucha**: se suscribe al WebSocket (`task:status_changed`, eventos de resultado) o hace polling de `GET /api/orchestrator/tasks?status=completed,failed`. Si la API no responde, puede leer directamente los `tasks/results.md` (resumen) de cada worktree como respaldo.
 6. **Decisión**: ante un resultado, crea nuevas tareas, desbloquea dependientes, o marca el trabajo global como terminado.
+7. **Mantenimiento de la rama de integración**: corre `amalia update` para traer lo nuevo de `main`, y `amalia integrate <bee>` por cada bee con trabajo completado, dejando todo listo (o marcado en conflicto) para el `git push` que decida un humano.
 
 ### Ciclo de vida de un Bee
 
@@ -657,7 +670,8 @@ El binario `amalia` es el cliente principal del Orchestrator API. Se ejecuta nor
 | `amalia task list [--status pending,in_progress,...] [--bee <nombre-bee>]` | Lista tareas con filtros. |
 | `amalia task show <task-id>` | Detalle de una tarea: estado, lock, dependencias, resultado si existe. |
 | `amalia logs <nombre-bee>` | Muestra el historial de `tasks/results.md`/eventos de un bee. |
-| `amalia integrate <nombre-bee> [<commit>]` | Integra a la rama principal el trabajo de un bee (merge o cherry-pick). Si hay conflictos, los reporta en `integrations` y los deja para resolución humana — no intenta resolverlos. |
+| `amalia update` | Trae a la rama de integración de Amalia lo nuevo de `main` (`git fetch` + `git merge --ff-only`). Si no es fast-forward, lo marca como inconsistencia para revisión humana — no fuerza un merge. |
+| `amalia integrate <nombre-bee> [<commit>]` | Integra a la rama de integración el trabajo de un bee (merge o cherry-pick) — Amalia solo arma el compendio de commits, nunca escribe ni repara código. Si hay conflictos, los reporta en `integrations` y los deja para resolución humana — no intenta resolverlos. |
 | `amalia integrate --resolve <integration-id>` | Marca una integración en conflicto como resuelta, después de que un humano corrigió el conflicto con Git manualmente. |
 | `amalia sync` | Fuerza la reconciliación archivo↔DB descrita en la Capa 0 (útil tras un modo degradado). |
 | `amalia doctor` | Revalida las precondiciones del entorno (Git instalado/con `worktree`), compara `schema_version` con la del binario y **aplica migraciones incrementales** si el `amalia.db` quedó atrás tras actualizar el paquete, limpia leases vencidos, detecta bees con heartbeat vencido y verifica consistencia entre archivos locales y la base (incluido el frontmatter de cada `tasks/<slug>.task.md`). |
@@ -743,4 +757,4 @@ Stack sugerido: HTML + JS vanilla o un framework ligero (Svelte/React), consumie
 
 ---
 
-*Documento de especificación v10.0 — Cambios sobre v9.0: **Seguridad** de la Capa 1 (autenticación por token de bee con identidad derivada del token, endpoints administrativos restringidos al token de Amalia, escucha en `127.0.0.1`, validación/saneo de nombres/slugs/commits y ejecución de Git sin shell, aislamiento de secretos entre motores); **concurrencia** explícita (regla de escritor único por archivo, WAL + `BEGIN IMMEDIATE`, frontmatter estricto en `tasks/<slug>.task.md`); **reconciliación por contador `rev` monotónico** en vez de timestamps, con `reconcile:conflict` cuando hay escritura concurrente real; **lease en vez de PID** y heartbeat en hilo independiente para evitar trabajo duplicado; ciclo de vida endurecido (`attempts`/`max_attempts`, propagación de fallo a dependientes, validación de ciclos de dependencia); **integración serial** con precondición de árbol limpio y lock; **baja segura de bee** (`amalia kill` rehúsa con trabajo sin integrar); asignación estática por defecto con **pool por rol** opcional; **migraciones de esquema** vía `schema_version`; replay de WebSocket por cursor (`GET /events?since`); unicidad de slug por worktree; corrección de inconsistencias `TASKS.md`/`RESULTS.md` → carpeta `tasks/`. Se mantiene: Capa 2 (Dashboard) obligatoria, validación de precondiciones de entorno en `init`/`doctor`, roles y alcance explícitos, SQLite como fuente de verdad y cola embebida, distribución como paquete npm.*
+*Documento de especificación v11.0 — Cambios sobre v10.0: rol de Amalia precisado como mantenedora de una **rama de integración siempre al día con `main`** (`amalia update`, fast-forward only, marca inconsistencia si no aplica) donde se va preparando, bee por bee, un **compendio ordenado de commits** (`amalia integrate`) antes de llegar a la rama principal; se refuerza que el worktree de Amalia nunca contiene código propio y que **nunca repara inconsistencias de código ni de merge** — solo las detecta y las marca para que el programador las resuelva. Se mantiene todo lo de v10.0 (seguridad por token, concurrencia con `rev`/lease, integración serial, Capa 2 obligatoria, distribución npm, etc.).*
