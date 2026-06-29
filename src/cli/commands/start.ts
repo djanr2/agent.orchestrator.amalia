@@ -1,12 +1,12 @@
 import type { Command } from "commander";
-import { writeFileSync, existsSync } from "node:fs";
+import { writeFileSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { openDb } from "../../db/index.js";
 import { getSchemaVersion } from "../../db/index.js";
 import { SCHEMA_VERSION } from "../../shared/types.js";
 import { createServer } from "../../api/server.js";
-import { findRoot, readConfig, dbPath, pidPath } from "../config.js";
+import { findRoot, readConfig, dbPath, pidPath, secretsDir } from "../config.js";
 
 const PACKAGE_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..");
 
@@ -46,6 +46,15 @@ export function registerStart(program: Command): void {
       console.log(`✓ API escuchando en http://127.0.0.1:${port}/api/orchestrator`);
       if (staticDir) console.log(`  Dashboard: http://127.0.0.1:${port}/`);
       console.log(`  PID ${pid}`);
+
+      const tokenPath = join(secretsDir(root, config), "amalia.token");
+      if (existsSync(tokenPath)) {
+        const token = readFileSync(tokenPath, "utf8").trim();
+        console.log(`  Token operador: ${token}`);
+      } else {
+        console.log(`  Token operador no encontrado en ${tokenPath}`);
+      }
+      console.log(`  (guardado en ${tokenPath})`);
 
       process.on("SIGINT", () => { server.close(); process.exit(0); });
       process.on("SIGTERM", () => { server.close(); process.exit(0); });
