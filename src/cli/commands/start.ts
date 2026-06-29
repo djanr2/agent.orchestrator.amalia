@@ -1,11 +1,14 @@
 import type { Command } from "commander";
 import { writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { openDb } from "../../db/index.js";
 import { getSchemaVersion } from "../../db/index.js";
 import { SCHEMA_VERSION } from "../../shared/types.js";
 import { createServer } from "../../api/server.js";
 import { findRoot, readConfig, dbPath, pidPath } from "../config.js";
+
+const PACKAGE_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..", "..");
 
 function defaultPort(): number {
   const env = process.env.AMALIA_PORT;
@@ -30,7 +33,7 @@ export function registerStart(program: Command): void {
         process.exit(1);
       }
 
-      const dashboardDir = join(root, "dashboard");
+      const dashboardDir = join(PACKAGE_ROOT, "dashboard");
       const staticDir = existsSync(dashboardDir) ? dashboardDir : undefined;
 
       const port = parseInt(opts.port, 10);
