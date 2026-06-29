@@ -13,6 +13,7 @@ export interface TaskFrontmatter {
   synced_rev: number;
   lock: string | null;
   ultima_sync_db: string | null;
+  needs_reconciliation?: boolean;
 }
 
 export interface ReplicaTask {
@@ -33,7 +34,7 @@ function tasksDir(beeDir: string): string {
   return join(beeDir, "tasks");
 }
 
-export function writeTaskFile(beeDir: string, task: { id: number; code: string; slug: string; status: string; assigned_to: number; priority: string; description: string; acceptance_criteria: string | null; rev: number; locked_by: number | null; beeName?: string }): void {
+export function writeTaskFile(beeDir: string, task: { id: number; code: string; slug: string; status: string; assigned_to: number; priority: string; description: string; acceptance_criteria: string | null; rev: number; locked_by: number | null; beeName?: string; needs_reconciliation?: boolean }): void {
   const dir = tasksDir(beeDir);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
@@ -49,6 +50,7 @@ export function writeTaskFile(beeDir: string, task: { id: number; code: string; 
     lock: task.locked_by ? String(task.locked_by) : null,
     ultima_sync_db: new Date().toISOString(),
   };
+  if (task.needs_reconciliation) fm.needs_reconciliation = true;
   const body = [task.description, task.acceptance_criteria].filter(Boolean).join("\n\n");
   const file = matter.stringify(body, fm);
   writeFileSync(join(dir, `${task.slug}.task.md`), file, "utf8");
