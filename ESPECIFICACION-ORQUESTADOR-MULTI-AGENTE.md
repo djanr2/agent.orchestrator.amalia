@@ -719,7 +719,7 @@ Aunque la API corra en `localhost`, **cualquier proceso o usuario de la máquina
 ### Stack
 - Node.js + TypeScript
 - Socket.io para tiempo real
-- SQLite (`better-sqlite3` o `node:sqlite`) — única opción, sin alternativa Postgres (decisión fija: cero servicios externos)
+- SQLite vía **`node:sqlite`** (módulo integrado de Node, clase `DatabaseSync`; requiere Node 24+, o 22.5+ con `--experimental-sqlite`) — se elige sobre `better-sqlite3` para **evitar compilación nativa** (sin toolchain de C++ en Windows). Única opción, sin alternativa Postgres (decisión fija: cero servicios externos)
 
 ## CLI de Amalia — Tareas que Amalia puede realizar
 
@@ -822,7 +822,7 @@ Stack sugerido: HTML + JS vanilla o un framework ligero (Svelte/React), consumie
 |-----------|------------|
 | Distribución / CLI | Paquete npm (`amalia`), binario en `bin/` |
 | Orchestrator API (Capa 1) | Node.js + TypeScript |
-| Base de datos / cola de mensajes (Capa 0) | SQLite (`better-sqlite3` o `node:sqlite`) |
+| Base de datos / cola de mensajes (Capa 0) | SQLite vía `node:sqlite` (integrado en Node 24+; sin compilación nativa) |
 | WebSocket | Socket.io |
 | Dashboard (Capa 2) | HTML + JS vanilla / Svelte / React |
 | Motores de Amalia/Bees (Capa 3) | Claude Code, opencode, Copilot CLI, Codex CLI, Ollama (modelos locales), u otros vía API |
