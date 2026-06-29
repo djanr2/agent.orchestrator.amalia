@@ -27,8 +27,8 @@ export function getSchemaVersion(db: DatabaseSync): number {
   return v.v ?? 0;
 }
 
-export function transaction<T>(db: DatabaseSync, fn: () => T): T {
-  db.exec("BEGIN IMMEDIATE;");
+export function transaction<T>(db: DatabaseSync, fn: () => T, immediate = false): T {
+  db.exec(immediate ? "BEGIN IMMEDIATE;" : "BEGIN;");
   try {
     const result = fn();
     db.exec("COMMIT;");
