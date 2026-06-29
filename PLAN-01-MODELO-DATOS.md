@@ -12,8 +12,9 @@ tenerla con el esquema correcto, y consultar/insertar filas.
 ## Prerrequisitos
 
 - Ninguno (es la primera etapa).
-- **Node.js >= 24** instalado (`node --version` debe mostrar v24 o superior). En Node 22.5–23.x
-  funciona pero hay que correr todo con `--experimental-sqlite` (ver PLAN-00). Usa Node 24+ para evitarlo.
+- **Node.js >= 24** instalado (`node --version` debe mostrar v24 o superior). Es un **requisito duro**:
+  `node:sqlite` no existe en Node 20/22. Si tu versión es menor, **actualiza Node antes de empezar**
+  (instalador de nodejs.org o `nvm install 24 && nvm use 24`).
 
 ## Decisiones ya tomadas (no las cambies)
 
@@ -43,7 +44,7 @@ tenerla con el esquema correcto, y consultar/insertar filas.
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "engines": { "node": ">=22.5.0" },
+  "engines": { "node": ">=24" },
   "license": "MIT"
 }
 ```
@@ -55,9 +56,8 @@ npm install express socket.io zod commander gray-matter
 npm install -D typescript vitest @types/node @types/express tsx
 ```
 
-**Verificación:** `node -e "require('node:sqlite'); console.log('ok')"` imprime `ok`
-(en Node 22/23 añade el flag: `node --experimental-sqlite -e "require('node:sqlite'); console.log('ok')"`),
-y existe la carpeta `node_modules/`.
+**Verificación:** `node --version` muestra v24+ y `node -e "require('node:sqlite'); console.log('ok')"`
+imprime `ok` (sin ningún flag), y existe la carpeta `node_modules/`.
 
 ---
 
@@ -279,9 +279,9 @@ export function transaction<T>(db: DatabaseSync, fn: () => T, immediate = false)
 }
 ```
 
-> Sobre el binario y los tests en Node 22/23: ejecuta con `--experimental-sqlite`. La forma
-> más simple es exportar `NODE_OPTIONS=--experimental-sqlite` en tu entorno, o añadir el flag
-> a los scripts de `package.json`. En **Node 24+ no hace falta** ningún flag.
+> En **Node 24+** no hace falta ningún flag para `node:sqlite`: ni en el binario, ni en los
+> tests, ni en `npm run build`. Si ves `No such built-in module: node:sqlite`, estás en una
+> versión de Node menor que 24 → actualiza Node.
 
 > IMPORTANTE: `schema.sql` es un archivo `.sql`, no `.ts`. Para que `tsc` lo copie a `dist/`,
 > añade un script de copia: en `package.json`, cambia `"build"` a

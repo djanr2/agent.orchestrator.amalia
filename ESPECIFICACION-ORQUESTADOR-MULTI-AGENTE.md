@@ -719,7 +719,7 @@ Aunque la API corra en `localhost`, **cualquier proceso o usuario de la máquina
 ### Stack
 - Node.js + TypeScript
 - Socket.io para tiempo real
-- SQLite vía **`node:sqlite`** (módulo integrado de Node, clase `DatabaseSync`; requiere Node 24+, o 22.5+ con `--experimental-sqlite`) — se elige sobre `better-sqlite3` para **evitar compilación nativa** (sin toolchain de C++ en Windows). Única opción, sin alternativa Postgres (decisión fija: cero servicios externos)
+- SQLite vía **`node:sqlite`** (módulo integrado de Node, clase `DatabaseSync`; **requiere Node 24+**, donde es estable y sin flags) — se elige sobre `better-sqlite3` para **evitar compilación nativa** (sin toolchain de C++ en Windows). Única opción, sin alternativa Postgres (decisión fija: cero servicios externos)
 
 ## CLI de Amalia — Tareas que Amalia puede realizar
 

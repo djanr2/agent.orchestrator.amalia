@@ -1,0 +1,28 @@
+{
+  "name": "amalia",
+  "version": "0.1.0",
+  "description": "Orquestador multi-agente sobre git worktrees",
+  "type": "module",
+  "bin": {
+    "amalia": "bin/amalia.js"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "license": "MIT",
+  "devDependencies": {
+
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.0.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}

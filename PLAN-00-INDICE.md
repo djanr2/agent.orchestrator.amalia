@@ -43,7 +43,7 @@ Construye en este orden exacto. Cada etapa depende de las anteriores.
 | Tema | Decisión | Motivo |
 |---|---|---|
 | Lenguaje | **TypeScript** (strict) | Tipado estático reduce errores |
-| Runtime | **Node.js >= 24** (recomendado) o **>= 22.5** con `--experimental-sqlite` | Necesario para `node:sqlite` |
+| Runtime | **Node.js >= 24** (LTS) — requisito duro | `node:sqlite` es estable y sin flags desde Node 24 |
 | Base de datos | **`node:sqlite`** (módulo integrado de Node) | **Sin compilación nativa** ni dependencia externa; evita el error de Visual Studio/C++ en Windows |
 | Framework HTTP | **Express 4** | Muy documentado |
 | WebSocket | **`socket.io` 4** | Lo pide la especificación |
@@ -59,11 +59,11 @@ Construye en este orden exacto. Cada etapa depende de las anteriores.
 **No agregues otras librerías** sin que el plan lo indique. Si crees que falta una, detente
 y reporta en vez de instalarla.
 
-> **Sobre `node:sqlite`.** Es un módulo **integrado en Node** (no se instala con npm). En
-> **Node 24+** está estable y se usa sin flags. En **Node 22.5–23.x** es experimental: hay que
-> ejecutar con `--experimental-sqlite` (p. ej. `NODE_OPTIONS=--experimental-sqlite`) y puede
-> emitir un `ExperimentalWarning` (se silencia con `--no-warnings`). **Recomendación: usa Node 24+**
-> para no lidiar con flags. Verifica tu versión con `node --version`.
+> **Sobre `node:sqlite`.** Es un módulo **integrado en Node** (no se instala con npm). Requiere
+> **Node 24 o superior**, donde es estable y se usa **sin flags**. Verifica tu versión con
+> `node --version`: si es menor que 24, **actualiza Node antes de empezar** (no hay forma de
+> usar `node:sqlite` en Node 20). En Windows, descarga el instalador de Node 24 LTS desde
+> nodejs.org, o usa `nvm-windows` (`nvm install 24 && nvm use 24`).
 
 ---
 
