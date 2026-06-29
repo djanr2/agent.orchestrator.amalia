@@ -26,3 +26,15 @@ export function getSchemaVersion(db: DatabaseSync): number {
   const v = db.prepare("SELECT MAX(version) AS v FROM schema_version").get() as { v: number | null };
   return v.v ?? 0;
 }
+
+export function transaction<T>(db: DatabaseSync, fn: () => T): T {
+  db.exec("BEGIN IMMEDIATE;");
+  try {
+    const result = fn();
+    db.exec("COMMIT;");
+    return result;
+  } catch (e) {
+    db.exec("ROLLBACK;");
+    throw e;
+  }
+}
