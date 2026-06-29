@@ -8,7 +8,7 @@ import { generateToken, hashToken } from "../../api/auth.js";
 import { openDb } from "../../db/index.js";
 import { worktreeAdd } from "../git.js";
 
-const PACKAGE_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..", "..");
+const PACKAGE_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..");
 
 export function registerHatch(program: Command): void {
   program

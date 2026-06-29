@@ -9,7 +9,7 @@ import { ensureGitignore } from "../gitignore.js";
 import { gitVersion, isInsideWorkTree, currentBranch, worktreeAdd } from "../git.js";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
-const PACKAGE_ROOT = join(here, "..", "..", "..", "..");
+const PACKAGE_ROOT = join(here, "..", "..", "..");
 
 interface CreatedState {
   dirs: string[];

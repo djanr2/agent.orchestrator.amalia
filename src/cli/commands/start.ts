@@ -8,7 +8,7 @@ import { SCHEMA_VERSION } from "../../shared/types.js";
 import { createServer } from "../../api/server.js";
 import { findRoot, readConfig, dbPath, pidPath } from "../config.js";
 
-const PACKAGE_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..", "..");
+const PACKAGE_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..");
 
 function defaultPort(): number {
   const env = process.env.AMALIA_PORT;
