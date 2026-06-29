@@ -30,14 +30,18 @@ export function registerStart(program: Command): void {
         process.exit(1);
       }
 
+      const dashboardDir = join(root, "dashboard");
+      const staticDir = existsSync(dashboardDir) ? dashboardDir : undefined;
+
       const port = parseInt(opts.port, 10);
-      const server = createServer({ db, port });
+      const server = createServer({ db, port, staticDir });
       await server.listen(port);
 
       const pid = String(process.pid);
       writeFileSync(pidPath(root, config), pid, "utf8");
 
       console.log(`✓ API escuchando en http://127.0.0.1:${port}/api/orchestrator`);
+      if (staticDir) console.log(`  Dashboard: http://127.0.0.1:${port}/`);
       console.log(`  PID ${pid}`);
 
       process.on("SIGINT", () => { server.close(); process.exit(0); });

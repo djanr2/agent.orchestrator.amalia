@@ -2,6 +2,7 @@ import type { Router } from "express";
 import type { DatabaseSync } from "node:sqlite";
 import type { Server as IoServer } from "socket.io";
 import { authMiddleware, requireOperator } from "../middleware/auth.js";
+import { emitEvent } from "../events.js";
 import { registerBeeSchema, createTaskSchema, claimSchema, resultSchema, COMMIT_RE } from "../validation.js";
 import { registerOrUpdateBee, heartbeat, listBees } from "../bees.service.js";
 import { createTask, listTasks, claimTask, reportResult } from "../tasks.service.js";
@@ -114,6 +115,25 @@ export function registerRoutes(
     }
   });
 
+  router.get("/tasks/:code/results", auth, (req, res) => {
+    const task = db.prepare("SELECT id FROM tasks WHERE code = ?").get(req.params.code as string) as { id: number } | undefined;
+    if (!task) { res.status(404).json({ error: "NOT_FOUND" }); return; }
+    const rows = db.prepare("SELECT * FROM results WHERE task_id = ? ORDER BY attempt").all(task.id);
+    res.json(rows);
+  });
+
+  router.get("/tasks/:code/dependencies", auth, (req, res) => {
+    const task = db.prepare("SELECT id FROM tasks WHERE code = ?").get(req.params.code as string) as { id: number } | undefined;
+    if (!task) { res.status(404).json({ error: "NOT_FOUND" }); return; }
+    const rows = db.prepare(
+      `SELECT t.code AS depends_on_task_code, t.slug
+       FROM task_dependencies td
+       JOIN tasks t ON t.id = td.depends_on_task_id
+       WHERE td.task_id = ?`
+    ).all(task.id);
+    res.json(rows);
+  });
+
   router.patch("/tasks/:code/status", auth, requireOperator, (req, res) => {
     const { status: newStatus } = req.body;
     if (!newStatus || !["pending", "in_progress", "completed", "blocked", "failed", "cancelled"].includes(newStatus)) {
@@ -167,6 +187,19 @@ export function registerRoutes(
     }
     db.prepare("UPDATE integrations SET status = 'success', resolved_at = datetime('now') WHERE id = ?").run(id);
     const updated = db.prepare("SELECT * FROM integrations WHERE id = ?").get(id);
+    res.json(updated);
+  });
+
+  router.patch("/integrations/:id/conflict", auth, requireOperator, (req, res) => {
+    const id = Number(req.params.id);
+    const row = db.prepare("SELECT * FROM integrations WHERE id = ?").get(id) as any;
+    if (!row) {
+      res.status(404).json({ error: "NOT_FOUND" });
+      return;
+    }
+    db.prepare("UPDATE integrations SET status = 'conflict', resolved_at = datetime('now') WHERE id = ?").run(id);
+    const updated = db.prepare("SELECT * FROM integrations WHERE id = ?").get(id);
+    emitEvent(db, io, "integration:conflict", { integration_id: id, commit_sha: row.commit_sha, target_branch: row.target_branch });
     res.json(updated);
   });
 

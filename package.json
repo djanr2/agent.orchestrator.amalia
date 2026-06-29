@@ -11,6 +11,7 @@
     "dist",
     "bin",
     "templates",
+    "dashboard",
     "src/db/schema.sql"
   ],
   "scripts": {

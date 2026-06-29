@@ -9,6 +9,7 @@ export interface ServerOptions {
   db: DatabaseSync;
   port?: number;
   host?: string;
+  staticDir?: string;
 }
 
 export interface ServerHandle {
@@ -27,9 +28,13 @@ export function createServer(options: ServerOptions): ServerHandle {
   const app = express();
   app.use(express.json());
 
+  if (options.staticDir) {
+    app.use(express.static(options.staticDir));
+  }
+
   const httpServer = createHttpServer(app);
   const io = new IoServer(httpServer, {
-    cors: { origin: "*" },
+    cors: { origin: ["http://127.0.0.1:" + port, "http://localhost:" + port] },
   });
 
   io.use((socket, next) => {

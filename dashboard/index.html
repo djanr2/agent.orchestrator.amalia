@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Amalia — Dashboard</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <h1>🐝 Amalia</h1>
+  <nav>
+    <button class="tab active" data-tab="bees">Bees</button>
+    <button class="tab" data-tab="tasks">Tareas</button>
+    <button class="tab" data-tab="conflicts">Conflictos</button>
+  </nav>
+  <div id="login-area">
+    <input type="password" id="token-input" placeholder="Token de operador" size="40">
+    <button id="connect-btn">Conectar</button>
+    <span id="conn-status" class="status-dot disconnected"></span>
+    <span id="conn-msg" class="conn-msg"></span>
+  </div>
+</header>
+
+<main>
+  <!-- Panel Bees -->
+  <section id="panel-bees" class="panel active">
+    <h2>Bees activos</h2>
+    <table id="bees-table">
+      <thead><tr><th>Nombre</th><th>Motor</th><th>Estado</th><th>Heartbeat</th><th>Tarea actual</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- Panel Tareas -->
+  <section id="panel-tasks" class="panel">
+    <h2>Tareas</h2>
+    <div class="filters">
+      <label>Estado: <select id="filter-status">
+        <option value="">Todos</option>
+        <option value="pending">Pending</option>
+        <option value="in_progress">In Progress</option>
+        <option value="completed">Completed</option>
+        <option value="blocked">Blocked</option>
+        <option value="failed">Failed</option>
+        <option value="cancelled">Cancelled</option>
+      </select></label>
+      <label>Bee: <select id="filter-bee"><option value="">Todos</option></select></label>
+    </div>
+    <div class="task-layout">
+      <div class="task-list-col">
+        <table id="tasks-table">
+          <thead><tr><th>Código</th><th>Slug</th><th>Estado</th><th>Bee</th><th>Prioridad</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="task-detail-col" id="task-detail">
+        <p class="hint">Selecciona una tarea para ver detalle</p>
+      </div>
+    </div>
+
+    <h3>Crear tarea</h3>
+    <form id="create-task-form">
+      <label>Bee destino: <select id="create-bee" required></select></label>
+      <label>Descripción: <textarea id="create-desc" required></textarea></label>
+      <label>Prioridad: <select id="create-priority">
+        <option value="high">High</option>
+        <option value="medium" selected>Medium</option>
+        <option value="low">Low</option>
+      </select></label>
+      <label>Slug: <input id="create-slug" placeholder="mi-slug" required></label>
+      <label>Dependencias (códigos separados por coma): <input id="create-deps" placeholder="TASK-1,TASK-2"></label>
+      <label>Max intentos: <input id="create-max-attempts" type="number" value="3" min="1"></label>
+      <button type="submit">Crear tarea</button>
+      <span id="create-result"></span>
+    </form>
+  </section>
+
+  <!-- Panel Conflictos -->
+  <section id="panel-conflicts" class="panel">
+    <h2>Conflictos detectados</h2>
+    <ul id="conflict-list"></ul>
+  </section>
+</main>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

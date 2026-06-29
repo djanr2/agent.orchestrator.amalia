@@ -255,3 +255,36 @@ test("POST /tasks con token de bee devuelve 403", async () => {
   });
   expect(res.status).toBe(403);
 });
+
+test("GET /tasks/:code/results devuelve resultados de una tarea", async () => {
+  const res = await fetch(`${baseUrl}/tasks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${OP_TOKEN}` },
+    body: JSON.stringify({
+      assigned_to: "database-bee", description: "Results test", priority: "low",
+      slug: "results-test", depends_on: [], max_attempts: 3,
+    }),
+  });
+  const task = await res.json();
+
+  await fetch(`${baseUrl}/tasks/${task.code}/claim`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${BEE_TOKEN}` },
+    body: JSON.stringify({ instance_id: "res-instance" }),
+  });
+
+  await fetch(`${baseUrl}/tasks/${task.code}/results`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${BEE_TOKEN}` },
+    body: JSON.stringify({ outcome: "completed", idempotency_key: "res-get-key" }),
+  });
+
+  const res2 = await fetch(`${baseUrl}/tasks/${task.code}/results`, {
+    headers: { Authorization: `Bearer ${OP_TOKEN}` },
+  });
+  expect(res2.status).toBe(200);
+  const results = await res2.json();
+  expect(Array.isArray(results)).toBe(true);
+  expect(results.length).toBe(1);
+  expect(results[0].idempotency_key).toBe("res-get-key");
+});
