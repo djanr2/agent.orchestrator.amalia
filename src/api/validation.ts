@@ -1,6 +1,6 @@
 import { z } from "zod";
+import { BEE_NAME_RE } from "../shared/validation.js";
 
-export const BEE_NAME_RE = /^[a-z][a-z0-9-]*-bee$/;
 export const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 export const COMMIT_RE = /^[0-9a-f]{7,40}$/;
 

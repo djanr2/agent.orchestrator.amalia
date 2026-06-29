@@ -1,0 +1,32 @@
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
+
+const BLOCK_START = "# Amalia — generado automáticamente por `amalia init`, no editar a mano esta sección";
+const BLOCK_END = "# Fin Amalia";
+
+function blockLines(honeycombPath: string): string[] {
+  return ["", BLOCK_START, ".amalia-root", `${honeycombPath}/`, BLOCK_END, ""];
+}
+
+export function ensureGitignore(rootDir: string, honeycombPath: string): void {
+  const gitignorePath = join(rootDir, ".gitignore");
+  const block = blockLines(honeycombPath).join("\n");
+
+  if (!existsSync(gitignorePath)) {
+    writeFileSync(gitignorePath, block, "utf8");
+    return;
+  }
+
+  const content = readFileSync(gitignorePath, "utf8");
+  if (content.includes(BLOCK_START)) return;
+
+  const updated = content.endsWith("\n") ? content + block : content + "\n" + block;
+  writeFileSync(gitignorePath, updated, "utf8");
+}
+
+export function checkGitignore(rootDir: string, honeycombPath: string): boolean {
+  const gitignorePath = join(rootDir, ".gitignore");
+  if (!existsSync(gitignorePath)) return false;
+  const content = readFileSync(gitignorePath, "utf8");
+  return content.includes(BLOCK_START) && content.includes(honeycombPath);
+}

@@ -1,0 +1,92 @@
+import { execFile } from "node:child_process";
+import { validateBranchName, validateCommitSha } from "../shared/validation.js";
+
+interface GitResult {
+  stdout: string;
+  stderr: string;
+  code: number | null;
+}
+
+function runGit(args: string[], cwd: string): Promise<GitResult> {
+  return new Promise((resolve) => {
+    execFile("git", args, { cwd }, (err, stdout, stderr) => {
+      resolve({
+        stdout: stdout?.toString() ?? "",
+        stderr: stderr?.toString() ?? "",
+        code: err ? (err as any).code ?? 1 : 0,
+      });
+    });
+  });
+}
+
+export async function gitVersion(): Promise<string> {
+  const r = await runGit(["--version"], process.cwd());
+  if (r.code !== 0) throw new Error("Git no está disponible");
+  return r.stdout.trim();
+}
+
+export async function isInsideWorkTree(cwd: string): Promise<boolean> {
+  const r = await runGit(["rev-parse", "--is-inside-work-tree"], cwd);
+  return r.stdout.trim() === "true";
+}
+
+export async function currentBranch(cwd: string): Promise<string> {
+  const r = await runGit(["rev-parse", "--abbrev-ref", "HEAD"], cwd);
+  return r.stdout.trim();
+}
+
+export async function worktreeAdd(repoDir: string, path: string, branch: string): Promise<GitResult> {
+  if (!validateBranchName(branch)) throw new Error(`Nombre de rama inválido: ${branch}`);
+  return runGit(["worktree", "add", path, branch], repoDir);
+}
+
+export async function worktreeRemove(repoDir: string, path: string, force = false): Promise<GitResult> {
+  const args = ["worktree", "remove"];
+  if (force) args.push("--force");
+  args.push(path);
+  return runGit(args, repoDir);
+}
+
+export async function statusPorcelain(cwd: string): Promise<string> {
+  const r = await runGit(["status", "--porcelain"], cwd);
+  return r.stdout.trim();
+}
+
+export async function fetch(cwd: string): Promise<GitResult> {
+  return runGit(["fetch", "--all"], cwd);
+}
+
+export async function rebase(cwd: string, target: string): Promise<GitResult> {
+  if (!validateBranchName(target)) throw new Error(`Rama target inválida: ${target}`);
+  return runGit(["rebase", target], cwd);
+}
+
+export async function mergeNoFf(cwd: string, branch: string): Promise<GitResult> {
+  if (!validateBranchName(branch)) throw new Error(`Rama inválida: ${branch}`);
+  return runGit(["merge", "--no-ff", branch], cwd);
+}
+
+export async function cherryPick(cwd: string, sha: string): Promise<GitResult> {
+  if (!validateCommitSha(sha)) throw new Error(`SHA inválido: ${sha}`);
+  return runGit(["cherry-pick", sha], cwd);
+}
+
+export async function cherry(cwd: string, target: string, branch: string): Promise<string> {
+  if (!validateBranchName(target)) throw new Error(`Rama target inválida: ${target}`);
+  if (!validateBranchName(branch)) throw new Error(`Rama inválida: ${branch}`);
+  const r = await runGit(["cherry", target, branch], cwd);
+  return r.stdout.trim();
+}
+
+export async function hasConflicts(cwd: string): Promise<boolean> {
+  const r = await runGit(["status", "--porcelain"], cwd);
+  return /^(UU|AA|DD)/m.test(r.stdout);
+}
+
+export async function rebaseAbort(cwd: string): Promise<GitResult> {
+  return runGit(["rebase", "--abort"], cwd);
+}
+
+export async function mergeAbort(cwd: string): Promise<GitResult> {
+  return runGit(["merge", "--abort"], cwd);
+}

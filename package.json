@@ -7,11 +7,19 @@
     "amalia": "bin/amalia.js"
   },
   "main": "dist/index.js",
+  "files": [
+    "dist",
+    "bin",
+    "templates",
+    "src/db/schema.sql"
+  ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run copy-assets",
+    "copy-assets": "node -e \"require('fs').cpSync('src/db/schema.sql', 'dist/db/schema.sql', {force:true})\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build && npm test"
   },
   "engines": {
     "node": ">=24"
