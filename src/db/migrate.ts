@@ -1,0 +1,28 @@
+import type { DatabaseSync } from "node:sqlite";
+import { SCHEMA_VERSION } from "../shared/types.js";
+import { getSchemaVersion } from "./index.js";
+
+type Migration = { to: number; up: (db: DatabaseSync) => void };
+
+const MIGRATIONS: Migration[] = [];
+
+export function migrate(db: DatabaseSync): number {
+  let current = getSchemaVersion(db);
+  for (const m of MIGRATIONS.filter((x) => x.to > current).sort((a, b) => a.to - b.to)) {
+    db.exec("BEGIN IMMEDIATE;");
+    try {
+      m.up(db);
+      db.exec(`INSERT INTO schema_version (version) VALUES (${m.to});`);
+      db.exec("COMMIT;");
+    } catch (e) {
+      db.exec("ROLLBACK;");
+      throw e;
+    }
+    current = m.to;
+  }
+  return current;
+}
+
+export function isSchemaCurrent(db: DatabaseSync): boolean {
+  return getSchemaVersion(db) >= SCHEMA_VERSION;
+}
