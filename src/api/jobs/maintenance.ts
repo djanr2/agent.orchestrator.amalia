@@ -42,11 +42,14 @@ export function runMaintenance(db: DatabaseSync, io: IoServer | null): void {
            rev = rev + 1,
            updated_at = datetime('now')
        WHERE status = 'in_progress'
-         AND claimed_at IS NOT NULL
-         AND datetime(claimed_at, '+' || COALESCE(max_run_seconds, ?) || ' seconds') < datetime(?)
+         AND (
+           (lease_expires_at IS NOT NULL AND lease_expires_at < datetime(?))
+           OR
+           (claimed_at IS NOT NULL AND datetime(claimed_at, '+' || COALESCE(max_run_seconds, ?) || ' seconds') < datetime(?))
+         )
        RETURNING id, code`,
     )
-    .all(DEFAULT_MAX_RUN, now) as { id: number; code: string }[];
+    .all(now, DEFAULT_MAX_RUN, now) as { id: number; code: string }[];
 
   for (const t of stuck) {
     emitEvent(db, io, "task:status_changed", {

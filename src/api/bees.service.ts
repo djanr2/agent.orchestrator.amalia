@@ -32,6 +32,13 @@ export function registerOrUpdateBee(
   beeId: number,
   input: RegisterBeeInput,
 ): Bee {
+  const existing = db.prepare("SELECT id FROM bees WHERE id = ?").get(beeId);
+  if (!existing) {
+    const err = new Error("BEE_NOT_FOUND");
+    (err as any).statusCode = 404;
+    throw err;
+  }
+
   db.prepare(
     `UPDATE bees
      SET worktree_path = ?,

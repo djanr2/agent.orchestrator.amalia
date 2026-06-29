@@ -86,19 +86,6 @@ export function createTask(
       throw err;
     }
 
-    const maxId = db.prepare("SELECT COALESCE(MAX(id), 0) + 1 AS next FROM tasks").get() as {
-      next: number;
-    };
-    const code = `TASK-${maxId.next}`;
-
-    let slug = input.slug;
-    const existing = db
-      .prepare("SELECT id FROM tasks WHERE assigned_to = ? AND slug = ?")
-      .get(bee.id, slug);
-    if (existing) {
-      slug = `${slug}-task-${code.toLowerCase()}`;
-    }
-
     const deps: number[] = [];
     for (const depCode of input.depends_on) {
       const dep = db
@@ -112,8 +99,38 @@ export function createTask(
       deps.push(dep.id);
     }
 
+    const placeholderCode = `_TEMP_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const placeholderSlug = `_temp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const info = db.prepare(
+      `INSERT INTO tasks (code, slug, assigned_to, created_by, status, priority, description,
+        acceptance_criteria, max_attempts, max_run_seconds, block_reason)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      placeholderCode,
+      placeholderSlug,
+      bee.id,
+      creatorId,
+      "pending",
+      input.priority,
+      input.description,
+      input.acceptance_criteria ?? null,
+      input.max_attempts,
+      input.max_run_seconds ?? null,
+      null,
+    );
+    const taskId = Number(info.lastInsertRowid);
+    const code = `TASK-${taskId}`;
+
+    let slug = input.slug;
+    const existing = db
+      .prepare("SELECT id FROM tasks WHERE assigned_to = ? AND slug = ? AND id != ?")
+      .get(bee.id, slug, taskId);
+    if (existing) {
+      slug = `${slug}-task-${code.toLowerCase()}`;
+    }
+
     for (const depId of deps) {
-      if (wouldCreateCycle(db, maxId.next, depId)) {
+      if (wouldCreateCycle(db, taskId, depId)) {
         const err = new Error("CYCLE_DETECTED");
         (err as any).statusCode = 400;
         throw err;
@@ -136,26 +153,10 @@ export function createTask(
     }
 
     db.prepare(
-      `INSERT INTO tasks (code, slug, assigned_to, created_by, status, priority, description,
-        acceptance_criteria, max_attempts, max_run_seconds, block_reason)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      code,
-      slug,
-      bee.id,
-      creatorId,
-      status,
-      input.priority,
-      input.description,
-      input.acceptance_criteria ?? null,
-      input.max_attempts,
-      input.max_run_seconds ?? null,
-      blockReason,
-    );
-
-    const taskId = Number(
-      (db.prepare("SELECT id FROM tasks WHERE code = ?").get(code) as { id: number }).id,
-    );
+      `UPDATE tasks
+       SET code = ?, slug = ?, status = ?, block_reason = ?
+       WHERE id = ?`,
+    ).run(code, slug, status, blockReason, taskId);
 
     for (const depId of deps) {
       db.prepare(
@@ -240,7 +241,7 @@ export function claimTask(
       status: "in_progress",
     });
     return { claimed: true, task: updated };
-  });
+  }, true);
 }
 
 export function reportResult(
@@ -264,7 +265,8 @@ export function reportResult(
       .prepare("SELECT * FROM results WHERE task_id = ? AND idempotency_key = ?")
       .get(task.id, input.idempotency_key) as any | undefined;
     if (existing) {
-      return { result: existing, task };
+      const currentTask = db.prepare("SELECT * FROM tasks WHERE id = ?").get(task.id) as unknown as Task;
+      return { result: existing, task: currentTask };
     }
 
     if (task.locked_by !== beeId) {

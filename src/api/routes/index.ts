@@ -55,6 +55,17 @@ export function registerRoutes(
     }
   });
 
+  router.get("/tasks/:code", auth, (req, res) => {
+    const task = db
+      .prepare("SELECT * FROM tasks WHERE code = ?")
+      .get(req.params.code as string);
+    if (!task) {
+      res.status(404).json({ error: "NOT_FOUND" });
+      return;
+    }
+    res.json(task);
+  });
+
   router.get("/tasks", auth, (req, res) => {
     const filters: { status?: string[]; assigned_to?: string } = {};
     if (req.query.status) {
@@ -104,10 +115,24 @@ export function registerRoutes(
   });
 
   router.patch("/tasks/:code/status", auth, requireOperator, (req, res) => {
-    res.status(501).json({ error: "NOT_IMPLEMENTED", message: "Cambio manual de estado pendiente" });
+    const { status: newStatus } = req.body;
+    if (!newStatus || !["pending", "in_progress", "completed", "blocked", "failed", "cancelled"].includes(newStatus)) {
+      res.status(400).json({ error: "VALIDATION_ERROR", message: "status inválido" });
+      return;
+    }
+    const info = db.prepare(
+      "UPDATE tasks SET status = ?, rev = rev + 1, updated_at = datetime('now') WHERE code = ?",
+    ).run(newStatus, req.params.code as string);
+    if (info.changes === 0) {
+      res.status(404).json({ error: "NOT_FOUND" });
+      return;
+    }
+    const updated = db.prepare("SELECT * FROM tasks WHERE code = ?").get(req.params.code as string);
+    res.json(updated);
   });
 
   router.post("/integrations", auth, requireOperator, (req, res) => {
+    if (!req.identity) return;
     const parsed = req.body;
     if (!parsed.target_branch || !COMMIT_RE.test(parsed.commit_sha || "")) {
       res.status(400).json({ error: "VALIDATION_ERROR", message: "target_branch requerido, commit_sha debe ser hex 7-40" });
@@ -118,7 +143,7 @@ export function registerRoutes(
       `INSERT INTO integrations (bee_id, task_id, covered_tasks, commit_sha, target_branch, status)
        VALUES (?, ?, ?, ?, ?, 'pending')`,
     ).run(
-      parsed.bee_id,
+      req.identity.beeId,
       parsed.task_id ?? null,
       parsed.covered_tasks ? JSON.stringify(parsed.covered_tasks) : null,
       parsed.commit_sha,
