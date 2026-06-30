@@ -42,7 +42,7 @@ export function readBeeConfig(beeDir: string): BeeConfig {
 
   const config: BeeConfig = {
     engine: result["Engine"] ?? "",
-    connection_mode: result["Connection mode"] ?? "cli",
+    connection_mode: result["Connection mode"] || "cli",
     model: result["Model"] ?? null,
     heartbeat_seconds: Number(result["Heartbeat (seconds)"]) || 60,
     bee_name: result["Name"] ?? "",

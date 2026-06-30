@@ -16,16 +16,17 @@ export const ollamaAdapter: EngineAdapter = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: ctx.config.model ?? "llama3",
+          model: ctx.config.model || "llama3",
           prompt: `Solve the following task:\n\n${task.description}\n\nAcceptance criteria: ${task.acceptance_criteria ?? "none"}`,
           stream: false,
         }),
       });
       if (!res.ok) {
+        const body = await res.text().catch(() => "");
         return {
           outcome: "failed",
           idempotency_key: idempotencyKey,
-          blockers: `Ollama responded with status ${res.status}`,
+          blockers: `Ollama responded with status ${res.status}${body ? `: ${body}` : ""}`,
         };
       }
       const data = await res.json();
