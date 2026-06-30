@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { readFileSync, writeFileSync, chmodSync, existsSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, chmodSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { findRoot, readConfig, secretsDir, beeWorktree, dbPath } from "../config.js";
@@ -52,9 +52,19 @@ export function registerHatch(program: Command): void {
       try { chmodSync(tokenPath, 0o600); } catch { }
 
       if (!existsSync(beeDir)) {
-        mkdirSync(beeDir, { recursive: true });
         const branch = opts.branch ?? `bee/${name}`;
-        await worktreeAdd(root, beeDir, branch);
+        try {
+          await worktreeAdd(root, beeDir, branch);
+        } catch (e: any) {
+          // Revertir: la fila en DB y el token ya se crearon, pero sin worktree
+          // real el bee queda en un estado inconsistente.
+          try { rmSync(tokenPath, { force: true }); } catch { /* ignore */ }
+          const cleanupDb = openDb(dbPath(root, config));
+          try { cleanupDb.prepare("DELETE FROM bees WHERE name = ?").run(name); } catch { /* ignore */ }
+          cleanupDb.close();
+          console.error(`Error al crear worktree para '${name}': ${e.message}`);
+          process.exit(1);
+        }
       }
 
       const tmpl = join(PACKAGE_ROOT, "templates");

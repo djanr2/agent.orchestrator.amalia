@@ -35,9 +35,24 @@ export async function currentBranch(cwd: string): Promise<string> {
   return r.stdout.trim();
 }
 
+async function branchExists(repoDir: string, branch: string): Promise<boolean> {
+  const r = await runGit(["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], repoDir);
+  return r.code === 0;
+}
+
 export async function worktreeAdd(repoDir: string, path: string, branch: string): Promise<GitResult> {
   if (!validateBranchName(branch)) throw new Error(`Nombre de rama inválido: ${branch}`);
-  return runGit(["worktree", "add", path, branch], repoDir);
+  // `git worktree add <path> <branch>` exige que la rama ya exista; si no existe,
+  // hay que crearla con -b (caso típico: rama nueva derivada para un bee nuevo).
+  const exists = await branchExists(repoDir, branch);
+  const args = exists
+    ? ["worktree", "add", path, branch]
+    : ["worktree", "add", "-b", branch, path];
+  const r = await runGit(args, repoDir);
+  if (r.code !== 0) {
+    throw new Error(`git worktree add falló para '${branch}': ${r.stderr.trim() || r.stdout.trim()}`);
+  }
+  return r;
 }
 
 export async function worktreeRemove(repoDir: string, path: string, force = false): Promise<GitResult> {
