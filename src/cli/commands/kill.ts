@@ -14,6 +14,10 @@ export function registerKill(program: Command): void {
     .option("--force", "Forzar eliminación aunque haya trabajo sin integrar")
     .option("--reassign-to <bee>", "Reasignar tareas pendientes a otro bee")
     .action(async (name: string, opts: { force?: boolean; reassignTo?: string }) => {
+      if (name === "amalia") {
+        console.error("👑 No puedes eliminar a la abeja reina. You can't kill the Queen 👑");
+        process.exit(1);
+      }
       if (!validateBeeName(name)) {
         console.error("Error: nombre de bee inválido"); process.exit(1);
       }
