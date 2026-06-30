@@ -126,7 +126,7 @@ export function createTask(
       .prepare("SELECT id FROM tasks WHERE assigned_to = ? AND slug = ? AND id != ?")
       .get(bee.id, slug, taskId);
     if (existing) {
-      slug = `${slug}-task-${code.toLowerCase()}`;
+      slug = `${slug}-${code.toLowerCase()}`;
     }
 
     for (const depId of deps) {

@@ -87,7 +87,7 @@ test("slug duplicado se sufija con el code", () => {
     max_attempts: 3,
   });
   expect(t1.slug).toBe("mismo-slug");
-  expect(t2.slug).toBe(`mismo-slug-task-${t2.code.toLowerCase()}`);
+  expect(t2.slug).toBe(`mismo-slug-${t2.code.toLowerCase()}`);
 });
 
 test("claimTask: primera claim exitosa, segunda falla (claimed:false)", () => {
