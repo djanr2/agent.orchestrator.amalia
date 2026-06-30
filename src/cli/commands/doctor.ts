@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { findRoot, readConfig, amaliaWorktree, dbPath } from "../config.js";
 import { openDb, getSchemaVersion } from "../../db/index.js";
 import { migrate } from "../../db/migrate.js";
-import { checkGitignore } from "../gitignore.js";
+import { checkGitignore, ensureGitignore } from "../gitignore.js";
 import { gitVersion, isInsideWorkTree, currentBranch } from "../git.js";
 
 export function registerDoctor(program: Command): void {
@@ -33,7 +33,12 @@ export function registerDoctor(program: Command): void {
       console.log(`✓ Current branch: ${branch}`);
 
       const hasGitignore = checkGitignore(root, config.honeycomb_path);
-      console.log(hasGitignore ? "✓ Amalia .gitignore block present" : "✗ Missing Amalia block in .gitignore");
+      if (hasGitignore) {
+        console.log("✓ Amalia .gitignore block present");
+      } else {
+        ensureGitignore(root, config.honeycomb_path);
+        console.log("✗ Missing Amalia block in .gitignore — repaired");
+      }
 
       const dbFile = dbPath(root, config);
       if (existsSync(dbFile)) {
@@ -51,7 +56,9 @@ export function registerDoctor(program: Command): void {
       }
 
       const aDir = amaliaWorktree(root, config);
-      console.log(existsSync(aDir) ? `✓ Amalia worktree: ${aDir}` : "✗ Amalia worktree not found");
+      const hasWorktree = existsSync(aDir);
+      console.log(hasWorktree ? `✓ Amalia worktree: ${aDir}` : "✗ Amalia worktree not found");
+      if (!hasWorktree) ok = false;
 
       if (ok) console.log("\n✓ Diagnosis complete: all OK");
       else { console.log("\n✗ Problems found. Review the messages above."); process.exit(1); }
