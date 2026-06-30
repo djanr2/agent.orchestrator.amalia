@@ -7,6 +7,7 @@ import { validateBeeName } from "../../shared/validation.js";
 import { generateToken, hashToken } from "../../api/auth.js";
 import { openDb } from "../../db/index.js";
 import { worktreeAdd } from "../git.js";
+import { renderTemplate, defaultApiBaseUrl } from "../templates.js";
 
 const PACKAGE_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..");
 
@@ -68,10 +69,22 @@ export function registerHatch(program: Command): void {
       }
 
       const tmpl = join(PACKAGE_ROOT, "templates");
+      const vars: Record<string, string> = {
+        name,
+        engine: opts.engine,
+        role: opts.role ?? "",
+        modo_conexion: "cli",
+        modelo: "",
+        comando_arranque: "",
+        endpoint: "",
+        auth_env: "",
+        api_base_url: defaultApiBaseUrl(),
+        heartbeat_segundos: "60",
+      };
       for (const f of ["bee.md", "AGENTS.md"]) {
         const src = join(tmpl, f);
         if (existsSync(src) && !existsSync(join(beeDir, f))) {
-          writeFileSync(join(beeDir, f), readFileSync(src, "utf8"));
+          writeFileSync(join(beeDir, f), renderTemplate(readFileSync(src, "utf8"), vars));
         }
       }
       const tasksDir = join(beeDir, "tasks");

@@ -1,8 +1,22 @@
 # Bee: {{name}}
 
-- **Engine:** {{engine}}
 - **Rol:** {{role}}
 - **Worktree:** `honeycomb/{{name}}/`
+
+## Motor
+
+- **Motor:** {{engine}}
+- **Modo de conexión:** {{modo_conexion}}
+- **Modelo:** {{modelo}}
+- **Comando de arranque:** {{comando_arranque}}
+- **Endpoint:** {{endpoint}}
+- **Variable de entorno (auth):** {{auth_env}}
+
+## Conexión al Orchestrator API
+
+- **Nombre:** {{name}}
+- **URL de la API:** {{api_base_url}}
+- **Heartbeat (segundos):** {{heartbeat_segundos}}
 
 ## Convención de Trabajo
 

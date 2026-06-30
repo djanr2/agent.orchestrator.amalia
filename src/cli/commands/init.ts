@@ -7,6 +7,7 @@ import { generateToken, hashToken } from "../../api/auth.js";
 import { writeConfig, honeycombDir, orchestratorApiDir, secretsDir, dbPath, amaliaWorktree } from "../config.js";
 import { ensureGitignore } from "../gitignore.js";
 import { gitVersion, isInsideWorkTree, currentBranch, worktreeAdd } from "../git.js";
+import { renderTemplate, defaultApiBaseUrl } from "../templates.js";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const PACKAGE_ROOT = join(here, "..", "..", "..");
@@ -84,10 +85,22 @@ export function registerInit(program: Command): void {
         }
 
         const tmpl = join(PACKAGE_ROOT, "templates");
+        const vars: Record<string, string> = {
+          name: "amalia",
+          engine: "opencode",
+          role: "Operador / orquestador",
+          modo_conexion: "cli",
+          modelo: "",
+          comando_arranque: "",
+          endpoint: "",
+          auth_env: "",
+          api_base_url: defaultApiBaseUrl(),
+          heartbeat_segundos: "60",
+        };
         for (const name of ["AGENTS.md", "bee.md"]) {
           const src = join(tmpl, name);
           if (existsSync(src) && !existsSync(join(aDir, name))) {
-            writeFileSync(join(aDir, name), readFileSync(src, "utf8"));
+            writeFileSync(join(aDir, name), renderTemplate(readFileSync(src, "utf8"), vars));
           }
         }
         const tasksDest = join(aDir, "tasks");
