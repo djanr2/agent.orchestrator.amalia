@@ -373,7 +373,7 @@ Test task for degraded mode
 
   // Verify the local result exists
   const tasksDir = join(degDir, "tasks");
-  const resultFiles = readdirSync(tasksDir).filter((f) => f.startsWith("result-"));
+  const resultFiles = readdirSync(tasksDir).filter((f) => f.endsWith(".result.md"));
   expect(resultFiles.length).toBeGreaterThanOrEqual(1);
 
   // Verify synced_rev is behind (rev=2, but synced_rev should be < rev since there's no API)

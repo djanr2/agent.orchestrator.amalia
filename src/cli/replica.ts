@@ -28,6 +28,7 @@ export interface ResultFrontmatter {
   attempt: number;
   idempotency_key: string;
   created_at: string;
+  files_changed?: string[];
 }
 
 function tasksDir(beeDir: string): string {
@@ -78,7 +79,7 @@ export function upsertTasksSummary(beeDir: string, tasks: { code: string; slug: 
   writeFileSync(join(dir, "tasks.md"), header + rows + "\n", "utf8");
 }
 
-export function writeResultFile(beeDir: string, result: { id: number; task_code?: string; outcome: string; attempt: number; idempotency_key: string; created_at: string }): void {
+export function writeResultFile(beeDir: string, result: { id: number; slug: string; task_code?: string; outcome: string; attempt: number; idempotency_key: string; created_at: string; notes?: string; decisions?: string; blockers?: string; files_changed?: string[] }): void {
   const dir = tasksDir(beeDir);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
@@ -90,8 +91,16 @@ export function writeResultFile(beeDir: string, result: { id: number; task_code?
     idempotency_key: result.idempotency_key,
     created_at: result.created_at,
   };
-  const file = matter.stringify("", fm);
-  writeFileSync(join(dir, `result-${result.id}.md`), file, "utf8");
+  if (result.files_changed?.length) fm.files_changed = result.files_changed;
+
+  const sections: string[] = [];
+  if (result.notes) sections.push(`## Notes\n\n${result.notes}`);
+  if (result.decisions) sections.push(`## Decisions\n\n${result.decisions}`);
+  if (result.blockers) sections.push(`## Blockers\n\n${result.blockers}`);
+  const body = sections.join("\n\n");
+
+  const file = matter.stringify(body, fm);
+  writeFileSync(join(dir, `${result.slug}.result.md`), file, "utf8");
 }
 
 export function upsertResultsSummary(beeDir: string, results: { id: number; task_code?: string; outcome: string; idempotency_key: string; created_at: string }[]): void {

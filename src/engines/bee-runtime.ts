@@ -169,11 +169,16 @@ async function workOnce(
       syncedRev = task.rev;
       writeResultFile(opts.beeDir, {
         id: reportRes.data.result.id,
+        slug: task.slug,
         task_code: task.code,
         outcome: result.outcome,
         attempt: reportRes.data.task.attempts,
         idempotency_key: result.idempotency_key,
         created_at: new Date().toISOString(),
+        notes: result.notes,
+        decisions: result.decisions,
+        blockers: result.blockers,
+        files_changed: result.files_changed,
       });
       upsertResultsSummary(opts.beeDir, [{
         id: reportRes.data.result.id,
@@ -193,11 +198,16 @@ async function workOnce(
     const localResultId = Date.now();
     writeResultFile(opts.beeDir, {
       id: localResultId,
+      slug: task.slug,
       task_code: task.code || task.slug,
       outcome: result.outcome,
       attempt: task.rev,
       idempotency_key: result.idempotency_key,
       created_at: new Date().toISOString(),
+      notes: result.notes,
+      decisions: result.decisions,
+      blockers: result.blockers,
+      files_changed: result.files_changed,
     });
     upsertResultsSummary(opts.beeDir, [{
       id: localResultId,
