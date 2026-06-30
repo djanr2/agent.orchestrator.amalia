@@ -10,7 +10,7 @@ export function apiBaseUrl(): string {
 
 export function operatorToken(): string {
   const root = findRoot(process.cwd());
-  if (!root) throw new Error("No se encontró .amalia-root");
+  if (!root) throw new Error(".amalia-root not found");
   const config = readConfig(root);
   return readFileSync(join(secretsDir(root, config), "amalia.token"), "utf8").trim();
 }

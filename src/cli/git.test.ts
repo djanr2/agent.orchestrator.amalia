@@ -17,33 +17,33 @@ function createTempRepo(): string {
   return dir;
 }
 
-test("gitVersion devuelve string con versión", async () => {
+test("gitVersion returns a version string", async () => {
   const ver = await gitVersion();
   expect(ver).toMatch(/\d+\.\d+/);
 });
 
-test("isInsideWorkTree true dentro de repo", async () => {
+test("isInsideWorkTree is true inside a repo", async () => {
   const dir = createTempRepo();
   expect(await isInsideWorkTree(dir)).toBe(true);
   rmSync(dir, { recursive: true });
 });
 
-test("currentBranch devuelve main", async () => {
+test("currentBranch returns main", async () => {
   const dir = createTempRepo();
   expect(await currentBranch(dir)).toBe("main");
   rmSync(dir, { recursive: true });
 });
 
-test("statusPorcelain vacío en árbol limpio", async () => {
+test("statusPorcelain is empty on a clean tree", async () => {
   const dir = createTempRepo();
   expect(await statusPorcelain(dir)).toBe("");
   rmSync(dir, { recursive: true });
 });
 
-test("statusPorcelain detecta cambios", async () => {
+test("statusPorcelain detects changes", async () => {
   const dir = createTempRepo();
-  writeFileSync(join(dir, "nuevo.txt"), "contenido");
+  writeFileSync(join(dir, "new.txt"), "content");
   const status = await statusPorcelain(dir);
-  expect(status).toContain("?? nuevo.txt");
+  expect(status).toContain("?? new.txt");
   rmSync(dir, { recursive: true });
 });

@@ -27,14 +27,14 @@ export async function runBee(opts: RuntimeOptions): Promise<void> {
   const client = new OrchestratorClient(opts.apiBaseUrl, token, config.bee_name);
   const instanceId = randomUUID();
 
-  log(opts, `${config.bee_name}: arrancando (motor=${config.motor}, instance=${instanceId})`);
+  log(opts, `${config.bee_name}: starting (engine=${config.engine}, instance=${instanceId})`);
 
   const reg = await client.register({
     worktree_path: opts.beeDir,
-    engine: config.motor,
-    connection_mode: config.modo_conexion,
-    model: config.modelo ?? undefined,
-    heartbeat_seconds: config.heartbeat_segundos,
+    engine: config.engine,
+    connection_mode: config.connection_mode,
+    model: config.model ?? undefined,
+    heartbeat_seconds: config.heartbeat_seconds,
   });
 
   let beeId: number;
@@ -42,16 +42,16 @@ export async function runBee(opts: RuntimeOptions): Promise<void> {
 
   if (reg.ok) {
     beeId = reg.data.id;
-    log(opts, `${config.bee_name}: registrado como bee ${beeId}`);
+    log(opts, `${config.bee_name}: registered as bee ${beeId}`);
   } else {
-    log(opts, `No se pudo registrar (${reg.error}), modo degradado sin API`);
+    log(opts, `Could not register (${reg.error}), degraded mode without API`);
     beeId = -1;
     degraded = true;
   }
 
   const hbTimer = setInterval(() => {
     if (beeId > 0) client.heartbeat(beeId).catch(() => {});
-  }, config.heartbeat_segundos * 1000);
+  }, config.heartbeat_seconds * 1000);
   hbTimer.unref();
 
   let running = true;
@@ -75,7 +75,7 @@ export async function runBee(opts: RuntimeOptions): Promise<void> {
     try {
       degraded = await workOnce(client, opts, config.bee_name, beeId, instanceId, engineCtx, degraded);
     } catch (e: any) {
-      log(opts, `Error en ciclo de trabajo: ${e.message}`);
+      log(opts, `Error in work cycle: ${e.message}`);
     }
     await sleep(2000);
   }
@@ -83,7 +83,7 @@ export async function runBee(opts: RuntimeOptions): Promise<void> {
   clearInterval(hbTimer);
   process.off("SIGINT", onSig);
   process.off("SIGTERM", onSig);
-  log(opts, `${config.bee_name}: detenido`);
+  log(opts, `${config.bee_name}: stopped`);
 }
 
 async function workOnce(
@@ -103,7 +103,7 @@ async function workOnce(
     tasks = tasksRes.data;
   } else {
     if (!degraded) {
-      log(opts, `API no disponible (${tasksRes.error}), modo degradado`);
+      log(opts, `API unavailable (${tasksRes.error}), degraded mode`);
       degraded = true;
     }
     tasks = readLocalPendingTasks(opts.beeDir);
@@ -113,26 +113,26 @@ async function workOnce(
 
   const task = tasks[0];
   const label = task.code || task.slug;
-  log(opts, `Reclamando tarea ${label}`);
+  log(opts, `Claiming task ${label}`);
 
-  // Si es offline y no hay code real, no se puede claim via API
+  // If offline and there's no real code, it can't be claimed via API
   const localOnly = degraded && !task.code;
 
   let claimed = false;
   if (localOnly) {
-    log(opts, `'${task.slug}' ejecutada offline — pendiente de reconciliación con el servidor`);
+    log(opts, `'${task.slug}' run offline — pending reconciliation with the server`);
     claimed = true;
   } else if (degraded) {
-    log(opts, `Modo degradado: marcando ${label} como in_progress localmente`);
+    log(opts, `Degraded mode: marking ${label} as in_progress locally`);
     claimed = true;
   } else {
     const claimRes = await client.claim(task.code, instanceId);
     if (!claimRes.ok) {
-      log(opts, `No se pudo reclamar ${task.code}: ${claimRes.error}, modo degradado`);
+      log(opts, `Could not claim ${task.code}: ${claimRes.error}, degraded mode`);
       degraded = true;
       claimed = true;
     } else if (!claimRes.data.claimed) {
-      log(opts, `${task.code} no disponible para claim`);
+      log(opts, `${task.code} not available to claim`);
       return degraded;
     } else {
       claimed = true;
@@ -143,7 +143,7 @@ async function workOnce(
 
   updateLocalTaskLock(opts.beeDir, task, beeId, instanceId, localOnly);
 
-  log(opts, `Ejecutando ${label}...`);
+  log(opts, `Running ${label}...`);
   const taskSpec: TaskSpec = {
     code: task.code || task.slug,
     slug: task.slug,
@@ -153,7 +153,7 @@ async function workOnce(
     rev: task.rev,
   };
   const result = await opts.engine.run(taskSpec, ctx);
-  log(opts, `Resultado de ${label}: ${result.outcome}`);
+  log(opts, `Result for ${label}: ${result.outcome}`);
 
   let syncedRev = task.rev - 1;
   if (!degraded) {
@@ -183,12 +183,12 @@ async function workOnce(
         created_at: new Date().toISOString(),
       }]);
     } else {
-      log(opts, `No se pudo reportar ${task.code}: ${reportRes.error}, guardando local`);
+      log(opts, `Could not report ${task.code}: ${reportRes.error}, saving locally`);
       degraded = true;
     }
   }
 
-  // Guardar resultado local (siempre, incluso si se reportó bien)
+  // Always save a local result (even when reported successfully)
   if (degraded) {
     const localResultId = Date.now();
     writeResultFile(opts.beeDir, {
@@ -208,19 +208,19 @@ async function workOnce(
     }]);
   }
 
-  // Actualizar archivo local con synced_rev y needs_reconciliation
+  // Update the local file with synced_rev and needs_reconciliation
   const existing = readTaskFile(opts.beeDir, task.slug);
   if (existing) {
     existing.frontmatter.synced_rev = syncedRev;
-    existing.frontmatter.estado = result.outcome === "completed" ? "completed" : "failed";
+    existing.frontmatter.status = result.outcome === "completed" ? "completed" : "failed";
     existing.frontmatter.needs_reconciliation = localOnly || undefined;
     writeTaskFile(opts.beeDir, {
       id: existing.frontmatter.id,
       code: task.code || "",
       slug: task.slug,
-      status: existing.frontmatter.estado,
+      status: existing.frontmatter.status,
       assigned_to: beeId,
-      priority: existing.frontmatter.prioridad,
+      priority: existing.frontmatter.priority,
       description: existing.body,
       acceptance_criteria: null,
       rev: existing.frontmatter.rev,
@@ -260,13 +260,13 @@ function readLocalPendingTasks(beeDir: string): PendingTask[] {
   for (const file of files) {
     const parsed = matter.read(join(tasksDir, file));
     const fm = parsed.data as any;
-    if (fm.estado === "pending") {
+    if (fm.status === "pending") {
       result.push({
         code: fm.code || "",
         slug: file.replace(".task.md", ""),
         status: "pending",
         assigned_to: -1,
-        priority: fm.prioridad || "medium",
+        priority: fm.priority || "medium",
         rev: fm.rev ?? 0,
         description: parsed.content,
         acceptance_criteria: null,
@@ -287,14 +287,14 @@ function updateLocalTaskLock(
   if (existing) {
     existing.frontmatter.rev += 1;
     existing.frontmatter.lock = `bee:${beeId}:${instanceId}`;
-    existing.frontmatter.estado = "in_progress";
+    existing.frontmatter.status = "in_progress";
     writeTaskFile(beeDir, {
       id: existing.frontmatter.id,
       code: task.code,
       slug: task.slug,
       status: "in_progress",
       assigned_to: beeId,
-      priority: existing.frontmatter.prioridad,
+      priority: existing.frontmatter.priority,
       description: existing.body,
       acceptance_criteria: null,
       rev: existing.frontmatter.rev,

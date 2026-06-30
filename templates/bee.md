@@ -1,26 +1,26 @@
 # Bee: {{name}}
 
-- **Rol:** {{role}}
+- **Role:** {{role}}
 - **Worktree:** `honeycomb/{{name}}/`
 
-## Motor
+## Engine
 
-- **Motor:** {{engine}}
-- **Modo de conexión:** {{modo_conexion}}
-- **Modelo:** {{modelo}}
-- **Comando de arranque:** {{comando_arranque}}
+- **Engine:** {{engine}}
+- **Connection mode:** {{connection_mode}}
+- **Model:** {{model}}
+- **Start command:** {{start_command}}
 - **Endpoint:** {{endpoint}}
-- **Variable de entorno (auth):** {{auth_env}}
+- **Auth env var:** {{auth_env}}
 
-## Conexión al Orchestrator API
+## Orchestrator API Connection
 
-- **Nombre:** {{name}}
-- **URL de la API:** {{api_base_url}}
-- **Heartbeat (segundos):** {{heartbeat_segundos}}
+- **Name:** {{name}}
+- **API URL:** {{api_base_url}}
+- **Heartbeat (seconds):** {{heartbeat_seconds}}
 
-## Convención de Trabajo
+## Working Convention
 
-1. Lee `tasks/tasks.md` para ver las tareas asignadas.
-2. Cada tarea tiene su archivo `tasks/<slug>.task.md` con metadatos y descripción.
-3. Al completar una tarea, incluye el trailer `Amalia-Task: TASK-XX` en el commit.
-4. Reporta resultados via `POST /api/orchestrator/tasks/<code>/results`.
+1. Read `tasks/tasks.md` to see assigned tasks.
+2. Each task has its own `tasks/<slug>.task.md` file with metadata and description.
+3. When completing a task, include the `Amalia-Task: TASK-XX` trailer in the commit.
+4. Report results via `POST /api/orchestrator/tasks/<code>/results`.

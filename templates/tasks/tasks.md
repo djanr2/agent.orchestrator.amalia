@@ -1,4 +1,4 @@
-# Tareas
+# Tasks
 
-| Código | Slug | Estado | Prioridad | Rev |
-|--------|------|--------|-----------|-----|
+| Code | Slug | Status | Priority | Rev |
+|------|------|--------|----------|-----|

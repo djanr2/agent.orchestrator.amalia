@@ -22,9 +22,9 @@ export interface LaunchOptions {
 
 export function getAdapter(beeDir: string): EngineAdapterMap[keyof EngineAdapterMap] {
   const config = readBeeConfig(beeDir);
-  const adapter = ADAPTERS[config.motor];
+  const adapter = ADAPTERS[config.engine];
   if (!adapter) {
-    throw new Error(`Motor '${config.motor}' no soportado. Soportados: ${Object.keys(ADAPTERS).join(", ")}`);
+    throw new Error(`Engine '${config.engine}' not supported. Supported: ${Object.keys(ADAPTERS).join(", ")}`);
   }
   return adapter;
 }
@@ -38,7 +38,7 @@ export async function launchBee(opts: LaunchOptions): Promise<void> {
   await runBee(runtimeOpts);
 }
 
-// CLI directo: node launch.js --bee-dir=<path> --secrets-dir=<path> --api-base-url=<url>
+// Direct CLI: node launch.js --bee-dir=<path> --secrets-dir=<path> --api-base-url=<url>
 if (process.argv[1] && (process.argv[1].endsWith("launch.js") || process.argv[1].endsWith("launch.ts"))) {
   const args = parseArgs(process.argv.slice(2));
   const beeDir = args["bee-dir"] ?? process.env.AMALIA_BEE_DIR;
@@ -46,13 +46,13 @@ if (process.argv[1] && (process.argv[1].endsWith("launch.js") || process.argv[1]
   const apiBaseUrl = args["api-base-url"] ?? process.env.AMALIA_API_URL ?? "http://127.0.0.1:4000/api/orchestrator";
 
   if (!beeDir || !secretsDir) {
-    console.error("Uso: launch.js --bee-dir=<path> --secrets-dir=<path> [--api-base-url=<url>]");
-    console.error("  O variables de entorno: AMALIA_BEE_DIR, AMALIA_SECRETS_DIR, AMALIA_API_URL");
+    console.error("Usage: launch.js --bee-dir=<path> --secrets-dir=<path> [--api-base-url=<url>]");
+    console.error("  Or env vars: AMALIA_BEE_DIR, AMALIA_SECRETS_DIR, AMALIA_API_URL");
     process.exit(1);
   }
 
   launchBee({ beeDir, secretsDir, apiBaseUrl }).catch((e) => {
-    console.error("Error fatal:", e.message);
+    console.error("Fatal error:", e.message);
     process.exit(1);
   });
 }

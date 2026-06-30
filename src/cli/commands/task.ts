@@ -1,23 +1,21 @@
 import type { Command } from "commander";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { findRoot, readConfig, secretsDir, beeWorktree } from "../config.js";
+import { findRoot, readConfig, beeWorktree } from "../config.js";
 import { writeTaskFile, upsertTasksSummary } from "../replica.js";
 import { apiBaseUrl, operatorToken } from "../api.js";
 
 export function registerTask(program: Command): void {
   const task = program
     .command("task")
-    .description("Gestionar tareas");
+    .description("Manage tasks");
 
   task
     .command("add")
-    .description("Crear nueva tarea")
-    .argument("<bee>", "Bee asignado")
-    .argument("<description>", "Descripción de la tarea")
-    .option("--priority <priority>", "Prioridad (high/medium/low)", "medium")
-    .option("--depends-on <codes>", "Códigos de tareas de las que depende (coma separados)")
-    .option("--slug <slug>", "Slug (por defecto se deriva de la descripción)")
+    .description("Create a new task")
+    .argument("<bee>", "Assigned bee")
+    .argument("<description>", "Task description")
+    .option("--priority <priority>", "Priority (high/medium/low)", "medium")
+    .option("--depends-on <codes>", "Codes of tasks this depends on (comma-separated)")
+    .option("--slug <slug>", "Slug (derived from the description by default)")
     .action(async (beeName: string, description: string, opts: { priority: string; dependsOn?: string; slug?: string }) => {
       try {
         const token = operatorToken();
@@ -37,7 +35,7 @@ export function registerTask(program: Command): void {
         }
 
         const created = await res.json();
-        console.log(`✓ Tarea ${created.code} creada (${created.status})`);
+        console.log(`✓ Task ${created.code} created (${created.status})`);
 
         const root = findRoot(process.cwd())!;
         const config = readConfig(root);
@@ -51,16 +49,16 @@ export function registerTask(program: Command): void {
         const allTasks: any[] = allRes.ok ? await allRes.json() : [created];
         upsertTasksSummary(beeDir, allTasks.map((t: any) => ({ ...t, beeName })));
       } catch (e: any) {
-        console.error(`Error: ${e.message ?? "No se pudo conectar con la API"}`);
+        console.error(`Error: ${e.message ?? "Could not connect to the API"}`);
         process.exit(1);
       }
     });
 
   task
     .command("list")
-    .description("Listar tareas")
-    .option("--status <status>", "Filtrar por estado")
-    .option("--bee <bee>", "Filtrar por bee")
+    .description("List tasks")
+    .option("--status <status>", "Filter by status")
+    .option("--bee <bee>", "Filter by bee")
     .action(async (opts: { status?: string; bee?: string }) => {
       try {
         const token = operatorToken();
@@ -70,44 +68,44 @@ export function registerTask(program: Command): void {
         if (opts.bee) params.set("assigned_to", opts.bee);
 
         const res = await fetch(`${base}/tasks?${params}`, { headers: { Authorization: `Bearer ${token}` } });
-        if (!res.ok) { console.error("Error al listar tareas"); process.exit(1); }
+        if (!res.ok) { console.error("Error listing tasks"); process.exit(1); }
 
         const tasks: any[] = await res.json();
-        if (tasks.length === 0) { console.log("No hay tareas"); return; }
+        if (tasks.length === 0) { console.log("No tasks"); return; }
 
-        console.log("Código       | Slug                          | Estado        | Prioridad | Rev");
+        console.log("Code         | Slug                          | Status        | Priority  | Rev");
         console.log("--------------|-------------------------------|---------------|-----------|-----");
         for (const t of tasks) {
           console.log(`${t.code.padEnd(12)} | ${(t.slug ?? "").padEnd(30)} | ${(t.status ?? "").padEnd(13)} | ${(t.priority ?? "").padEnd(9)} | ${t.rev}`);
         }
       } catch (e: any) {
-        console.error(`Error: ${e.message ?? "No se pudo conectar con la API"}`);
+        console.error(`Error: ${e.message ?? "Could not connect to the API"}`);
         process.exit(1);
       }
     });
 
   task
     .command("show")
-    .description("Mostrar detalle de una tarea")
-    .argument("<code>", "Código de la tarea (TASK-XX)")
+    .description("Show task detail")
+    .argument("<code>", "Task code (TASK-XX)")
     .action(async (code: string) => {
       try {
         const token = operatorToken();
         const base = apiBaseUrl();
         const res = await fetch(`${base}/tasks/${code}`, { headers: { Authorization: `Bearer ${token}` } });
-        if (!res.ok) { console.error("Tarea no encontrada"); process.exit(1); }
+        if (!res.ok) { console.error("Task not found"); process.exit(1); }
 
         const t = await res.json();
-        console.log(`Código:    ${t.code}`);
+        console.log(`Code:      ${t.code}`);
         console.log(`Slug:      ${t.slug}`);
-        console.log(`Estado:    ${t.status}`);
-        console.log(`Prioridad: ${t.priority}`);
-        console.log(`Asignado:  ${t.assigned_to}`);
+        console.log(`Status:    ${t.status}`);
+        console.log(`Priority:  ${t.priority}`);
+        console.log(`Assigned:  ${t.assigned_to}`);
         console.log(`Desc:      ${t.description}`);
         console.log(`Rev:       ${t.rev}`);
-        if (t.block_reason) console.log(`Bloqueo:   ${t.block_reason}`);
+        if (t.block_reason) console.log(`Blocked:   ${t.block_reason}`);
       } catch (e: any) {
-        console.error(`Error: ${e.message ?? "No se pudo conectar con la API"}`);
+        console.error(`Error: ${e.message ?? "Could not connect to the API"}`);
         process.exit(1);
       }
     });

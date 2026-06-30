@@ -5,8 +5,8 @@ import type { EngineAdapter, EngineContext, TaskSpec } from "./index.js";
 export const claudeCodeAdapter: EngineAdapter = {
   async run(task: TaskSpec, ctx: EngineContext): Promise<{ outcome: "completed" | "failed"; idempotency_key: string; files_changed?: string[]; decisions?: string; blockers?: string; notes?: string }> {
     const idempotencyKey = randomUUID();
-    const cmd = ctx.config.comando_arranque || "npx @anthropic-ai/claude-code";
-    ctx.log(`Ejecutando claude-code para tarea ${task.code}: ${cmd}`);
+    const cmd = ctx.config.start_command || "npx @anthropic-ai/claude-code";
+    ctx.log(`Running claude-code for task ${task.code}: ${cmd}`);
 
     const env: Record<string, string> = {
       AMALIA_TASK_CODE: task.code,

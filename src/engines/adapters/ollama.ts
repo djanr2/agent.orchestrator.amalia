@@ -5,7 +5,7 @@ export const ollamaAdapter: EngineAdapter = {
   async run(task: TaskSpec, ctx: EngineContext): Promise<{ outcome: "completed" | "failed"; idempotency_key: string; files_changed?: string[]; decisions?: string; blockers?: string; notes?: string }> {
     const idempotencyKey = randomUUID();
     const endpoint = ctx.config.endpoint || "http://localhost:11434/api/generate";
-    ctx.log(`Consultando Ollama en ${endpoint} para tarea ${task.code}`);
+    ctx.log(`Querying Ollama at ${endpoint} for task ${task.code}`);
 
     try {
       const env: Record<string, string | undefined> = { AMALIA_TASK_CODE: task.code, AMALIA_BEE_NAME: ctx.beeName };
@@ -16,8 +16,8 @@ export const ollamaAdapter: EngineAdapter = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: ctx.config.modelo ?? "llama3",
-          prompt: `Resuelve la siguiente tarea:\n\n${task.description}\n\nCriterios de aceptación: ${task.acceptance_criteria ?? "ninguno"}`,
+          model: ctx.config.model ?? "llama3",
+          prompt: `Solve the following task:\n\n${task.description}\n\nAcceptance criteria: ${task.acceptance_criteria ?? "none"}`,
           stream: false,
         }),
       });
@@ -25,7 +25,7 @@ export const ollamaAdapter: EngineAdapter = {
         return {
           outcome: "failed",
           idempotency_key: idempotencyKey,
-          blockers: `Ollama respondió con status ${res.status}`,
+          blockers: `Ollama responded with status ${res.status}`,
         };
       }
       const data = await res.json();

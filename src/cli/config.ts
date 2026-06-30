@@ -34,7 +34,7 @@ export function readConfig(rootDir: string): AmaliaConfig {
 }
 
 export function writeConfig(rootDir: string, config: AmaliaConfig): void {
-  const content = `# Amalia root config — generado automáticamente
+  const content = `# Amalia root config — auto-generated
 honeycomb_path: ${config.honeycomb_path}
 target_branch: ${config.target_branch}
 `;

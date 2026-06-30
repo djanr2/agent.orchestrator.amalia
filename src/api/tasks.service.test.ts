@@ -14,26 +14,26 @@ function setupDb() {
   return db;
 }
 
-test("crear tarea sin dependencias queda pending", () => {
+test("creating a task with no dependencies ends up pending", () => {
   const db = setupDb();
   const task = createTask(db, null, 1, {
     assigned_to: "database-bee",
-    description: "Crear esquema SQL",
+    description: "Create SQL schema",
     priority: "high",
-    slug: "crear-esquema",
+    slug: "create-schema",
     depends_on: [],
     max_attempts: 3,
   });
   expect(task.status).toBe("pending");
   expect(task.code).toMatch(/^TASK-\d+$/);
-  expect(task.slug).toBe("crear-esquema");
+  expect(task.slug).toBe("create-schema");
 });
 
-test("crear tarea con dependencia no completada queda blocked (deps_unresolved)", () => {
+test("creating a task with an unfinished dependency ends up blocked (deps_unresolved)", () => {
   const db = setupDb();
   const dep = createTask(db, null, 1, {
     assigned_to: "database-bee",
-    description: "Dependencia",
+    description: "Dependency",
     priority: "medium",
     slug: "dep",
     depends_on: [],
@@ -41,9 +41,9 @@ test("crear tarea con dependencia no completada queda blocked (deps_unresolved)"
   });
   const task = createTask(db, null, 1, {
     assigned_to: "database-bee",
-    description: "Tarea que depende",
+    description: "Task that depends on another",
     priority: "medium",
-    slug: "dependiente",
+    slug: "dependent",
     depends_on: [dep.code],
     max_attempts: 3,
   });
@@ -51,52 +51,52 @@ test("crear tarea con dependencia no completada queda blocked (deps_unresolved)"
   expect(task.block_reason).toBe("deps_unresolved");
 });
 
-test("wouldCreateCycle detecta ciclo real", () => {
+test("wouldCreateCycle detects a real cycle", () => {
   const db = setupDb();
   const a = createTask(db, null, 1, {
-    assigned_to: "database-bee", description: "Tarea A", priority: "medium",
+    assigned_to: "database-bee", description: "Task A", priority: "medium",
     slug: "a", depends_on: [], max_attempts: 3,
   });
   const b = createTask(db, null, 1, {
-    assigned_to: "database-bee", description: "Tarea B", priority: "medium",
+    assigned_to: "database-bee", description: "Task B", priority: "medium",
     slug: "b", depends_on: [a.code], max_attempts: 3,
   });
-  // B depende de A, entonces si A quisiera depender de B habría ciclo: can B reach A?
+  // B depends on A, so if A wanted to depend on B there would be a cycle: can B reach A?
   expect(wouldCreateCycle(db, a.id, b.id)).toBe(true);
-  // A no depende de nadie, entonces si C depende de A no hay ciclo
+  // A depends on nothing, so if C depends on A there's no cycle
   expect(wouldCreateCycle(db, b.id, a.id)).toBe(false);
   expect(wouldCreateCycle(db, 999, a.id)).toBe(false);
 });
 
-test("slug duplicado se sufija con el code", () => {
+test("a duplicate slug gets suffixed with the code", () => {
   const db = setupDb();
   const t1 = createTask(db, null, 1, {
     assigned_to: "database-bee",
-    description: "Primera",
+    description: "First",
     priority: "low",
-    slug: "mismo-slug",
+    slug: "same-slug",
     depends_on: [],
     max_attempts: 3,
   });
   const t2 = createTask(db, null, 1, {
     assigned_to: "database-bee",
-    description: "Segunda",
+    description: "Second",
     priority: "low",
-    slug: "mismo-slug",
+    slug: "same-slug",
     depends_on: [],
     max_attempts: 3,
   });
-  expect(t1.slug).toBe("mismo-slug");
-  expect(t2.slug).toBe(`mismo-slug-${t2.code.toLowerCase()}`);
+  expect(t1.slug).toBe("same-slug");
+  expect(t2.slug).toBe(`same-slug-${t2.code.toLowerCase()}`);
 });
 
-test("claimTask: primera claim exitosa, segunda falla (claimed:false)", () => {
+test("claimTask: first claim succeeds, second fails (claimed:false)", () => {
   const db = setupDb();
   const task = createTask(db, null, 1, {
     assigned_to: "database-bee",
-    description: "Tarea para claim",
+    description: "Task for claim",
     priority: "medium",
-    slug: "para-claim",
+    slug: "for-claim",
     depends_on: [],
     max_attempts: 3,
   });
@@ -107,7 +107,7 @@ test("claimTask: primera claim exitosa, segunda falla (claimed:false)", () => {
   expect(r2.claimed).toBe(false);
 });
 
-test("completar tarea desbloquea a su dependiente", () => {
+test("completing a task unblocks its dependent", () => {
   const db = setupDb();
   const dep = createTask(db, null, 1, {
     assigned_to: "database-bee",
@@ -138,21 +138,21 @@ test("completar tarea desbloquea a su dependiente", () => {
   expect(updated.block_reason).toBeNull();
 });
 
-test("fallar agotando max_attempts bloquea dependiente con upstream_failed", () => {
+test("failing and exhausting max_attempts blocks the dependent with upstream_failed", () => {
   const db = setupDb();
   const depT = createTask(db, null, 1, {
     assigned_to: "database-bee",
-    description: "Dep que falla",
+    description: "Dependency that fails",
     priority: "medium",
-    slug: "dep-falla",
+    slug: "dep-fail",
     depends_on: [],
     max_attempts: 1,
   });
   const main = createTask(db, null, 1, {
     assigned_to: "database-bee",
-    description: "Dependiente",
+    description: "Dependent",
     priority: "medium",
-    slug: "deps-falla",
+    slug: "deps-fail",
     depends_on: [depT.code],
     max_attempts: 3,
   });
@@ -173,13 +173,13 @@ test("fallar agotando max_attempts bloquea dependiente con upstream_failed", () 
   expect(mainStatus.block_reason).toBe("upstream_failed");
 });
 
-test("idempotency_key evita duplicar resultados", () => {
+test("idempotency_key avoids duplicating results", () => {
   const db = setupDb();
   const task = createTask(db, null, 1, {
     assigned_to: "database-bee",
-    description: "Tarea",
+    description: "Task",
     priority: "medium",
-    slug: "idempotente",
+    slug: "idempotent",
     depends_on: [],
     max_attempts: 3,
   });
@@ -187,11 +187,11 @@ test("idempotency_key evita duplicar resultados", () => {
   expect(claim.claimed).toBe(true);
   const r1 = reportResult(db, null, 2, task.code, {
     outcome: "completed",
-    idempotency_key: "idem-unico",
+    idempotency_key: "idem-unique",
   });
   const r2 = reportResult(db, null, 2, task.code, {
     outcome: "completed",
-    idempotency_key: "idem-unico",
+    idempotency_key: "idem-unique",
   });
   expect(r1.result.id).toBe(r2.result.id);
   const count = db

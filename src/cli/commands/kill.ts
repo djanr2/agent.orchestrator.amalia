@@ -9,28 +9,28 @@ import { cherry, worktreeRemove } from "../git.js";
 export function registerKill(program: Command): void {
   program
     .command("kill")
-    .description("Eliminar un bee del panal")
-    .argument("<name>", "Nombre del bee")
-    .option("--force", "Forzar eliminación aunque haya trabajo sin integrar")
-    .option("--reassign-to <bee>", "Reasignar tareas pendientes a otro bee")
+    .description("Remove a bee from the hive")
+    .argument("<name>", "Bee name")
+    .option("--force", "Force removal even if there is unintegrated work")
+    .option("--reassign-to <bee>", "Reassign pending tasks to another bee")
     .action(async (name: string, opts: { force?: boolean; reassignTo?: string }) => {
       if (name === "amalia") {
-        console.error("👑 No puedes eliminar a la abeja reina. You can't kill the Queen 👑");
+        console.error("👑 You can't kill the Queen 👑");
         process.exit(1);
       }
       if (!validateBeeName(name)) {
-        console.error("Error: nombre de bee inválido"); process.exit(1);
+        console.error("Error: invalid bee name"); process.exit(1);
       }
 
       const root = findRoot(process.cwd());
-      if (!root) { console.error("Error: no se encontró .amalia-root"); process.exit(1); }
+      if (!root) { console.error("Error: .amalia-root not found"); process.exit(1); }
       const config = readConfig(root);
       const beeDir = beeWorktree(root, config, name);
 
       const db = openDb(dbPath(root, config));
       const beeRow = db.prepare("SELECT id FROM bees WHERE name = ?").get(name) as { id: number } | undefined;
       if (!beeRow) {
-        console.error(`Error: no existe un bee llamado "${name}" en la base de datos`);
+        console.error(`Error: no bee named "${name}" exists in the database`);
         db.close(); process.exit(1);
       }
       const beeId = beeRow.id;
@@ -38,29 +38,29 @@ export function registerKill(program: Command): void {
       const pending = db.prepare("SELECT code, status FROM tasks WHERE assigned_to = ? AND status IN ('pending', 'in_progress')").all(beeId) as { code: string; status: string }[];
 
       if (pending.length > 0 && !opts.force && !opts.reassignTo) {
-        console.error(`Error: el bee tiene ${pending.length} tareas sin completar:`);
+        console.error(`Error: this bee has ${pending.length} unfinished task(s):`);
         for (const t of pending) console.error(`  ${t.code} (${t.status})`);
-        console.error("  Usa --force para eliminar de todas formas, o --reassign-to <bee> para reasignar");
+        console.error("  Use --force to remove anyway, or --reassign-to <bee> to reassign");
         db.close(); process.exit(1);
       }
 
       if (opts.reassignTo) {
         const target = db.prepare("SELECT id FROM bees WHERE name = ?").get(opts.reassignTo) as { id: number } | undefined;
         if (!target) {
-          console.error(`Error: no existe el bee "${opts.reassignTo}"`);
+          console.error(`Error: bee "${opts.reassignTo}" does not exist`);
           db.close(); process.exit(1);
         }
-        // Reasigna TODAS las tareas (no solo pending/in_progress): cualquier fila que
-        // siga apuntando a este bee como assigned_to bloqueará el DELETE por foreign key.
+        // Reassign ALL tasks (not just pending/in_progress): any row still pointing
+        // to this bee as assigned_to would block the DELETE via foreign key.
         const info = db.prepare("UPDATE tasks SET assigned_to = ? WHERE assigned_to = ?").run(target.id, beeId);
-        if (info.changes > 0) console.log(`  ${info.changes} tarea(s) reasignadas a ${opts.reassignTo}`);
+        if (info.changes > 0) console.log(`  ${info.changes} task(s) reassigned to ${opts.reassignTo}`);
       }
 
       const branch = `bee/${name}`;
       if (!opts.force) {
         const unpushed = await cherry(beeDir, config.target_branch, branch);
         if (unpushed) {
-          console.error(`Error: hay commits sin integrar en ${branch}. Usa --force para ignorar`);
+          console.error(`Error: there are unintegrated commits on ${branch}. Use --force to ignore`);
           db.close(); process.exit(1);
         }
       }
@@ -71,8 +71,8 @@ export function registerKill(program: Command): void {
         db.prepare("DELETE FROM bees WHERE id = ?").run(beeId);
       } catch (e: any) {
         db.close();
-        console.error(`Error: no se pudo eliminar "${name}" — aún tiene tareas/resultados asociados.`);
-        console.error(`  Usa --reassign-to <bee> para transferir su historial antes de eliminarlo.`);
+        console.error(`Error: could not remove "${name}" — it still has associated tasks/results.`);
+        console.error(`  Use --reassign-to <bee> to transfer its history before removing it.`);
         process.exit(1);
       }
 
@@ -80,6 +80,6 @@ export function registerKill(program: Command): void {
       try { unlinkSync(tokenPath); } catch { }
 
       db.close();
-      console.log(`✓ Bee ${name} eliminado`);
+      console.log(`✓ Bee ${name} removed`);
     });
 }

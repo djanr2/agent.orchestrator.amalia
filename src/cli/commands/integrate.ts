@@ -7,47 +7,47 @@ import { validateBeeName, validateCommitSha } from "../../shared/validation.js";
 export function registerIntegrate(program: Command): void {
   const integrate = program
     .command("integrate")
-    .description("Integrar trabajo de un bee en el worktree de Amalia");
+    .description("Integrate a bee's work into the Amalia worktree");
 
   integrate
     .command("merge")
-    .description("Integrar rama completa de un bee")
-    .argument("<bee>", "Nombre del bee")
+    .description("Integrate a bee's full branch")
+    .argument("<bee>", "Bee name")
     .action(async (bee: string) => {
-      if (!validateBeeName(bee)) { console.error("Error: nombre de bee inválido"); process.exit(1); }
+      if (!validateBeeName(bee)) { console.error("Error: invalid bee name"); process.exit(1); }
       const root = findRoot(process.cwd());
-      if (!root) { console.error("Error: no se encontró .amalia-root"); process.exit(1); }
+      if (!root) { console.error("Error: .amalia-root not found"); process.exit(1); }
       const config = readConfig(root);
 
       const amaliaDir = join(root, config.honeycomb_path, "amalia");
       const status = await statusPorcelain(amaliaDir);
-      if (status) { console.error("Error: el worktree de Amalia no está limpio"); process.exit(1); }
+      if (status) { console.error("Error: the Amalia worktree is not clean"); process.exit(1); }
 
       const beeBranch = `bee/${bee}`;
       const r = await mergeNoFf(amaliaDir, beeBranch);
 
       if (r.code !== 0) {
         if (await hasConflicts(amaliaDir)) {
-          console.error("Conflicto durante merge. Resuelve manualmente y confirma.");
+          console.error("Conflict during merge. Resolve manually and commit.");
         } else {
           console.error(`Error: ${r.stderr}`);
         }
         process.exit(1);
       }
 
-      console.log(`✓ Rama ${beeBranch} integrada en Amalia`);
+      console.log(`✓ Branch ${beeBranch} integrated into Amalia`);
     });
 
   integrate
     .command("cherry-pick")
-    .description("Integrar un commit específico de un bee")
-    .argument("<bee>", "Nombre del bee")
-    .argument("<sha>", "SHA del commit")
+    .description("Integrate a specific commit from a bee")
+    .argument("<bee>", "Bee name")
+    .argument("<sha>", "Commit SHA")
     .action(async (bee: string, sha: string) => {
-      if (!validateBeeName(bee)) { console.error("Error: nombre de bee inválido"); process.exit(1); }
-      if (!validateCommitSha(sha)) { console.error("Error: SHA inválido"); process.exit(1); }
+      if (!validateBeeName(bee)) { console.error("Error: invalid bee name"); process.exit(1); }
+      if (!validateCommitSha(sha)) { console.error("Error: invalid SHA"); process.exit(1); }
       const root = findRoot(process.cwd());
-      if (!root) { console.error("Error: no se encontró .amalia-root"); process.exit(1); }
+      if (!root) { console.error("Error: .amalia-root not found"); process.exit(1); }
       const config = readConfig(root);
 
       const amaliaDir = join(root, config.honeycomb_path, "amalia");
@@ -55,13 +55,13 @@ export function registerIntegrate(program: Command): void {
 
       if (r.code !== 0) {
         if (await hasConflicts(amaliaDir)) {
-          console.error("Conflicto durante cherry-pick. Resuelve manualmente y corre `git cherry-pick --continue`");
+          console.error("Conflict during cherry-pick. Resolve manually and run `git cherry-pick --continue`");
         } else {
           console.error(`Error: ${r.stderr}`);
         }
         process.exit(1);
       }
 
-      console.log(`✓ Commit ${sha.slice(0, 8)} integrado en Amalia`);
+      console.log(`✓ Commit ${sha.slice(0, 8)} integrated into Amalia`);
     });
 }

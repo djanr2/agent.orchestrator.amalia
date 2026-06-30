@@ -41,7 +41,7 @@ afterEach(() => {
   try { rmSync(root, { recursive: true, force: true }); } catch { /* Windows */ }
 });
 
-// Helper que simula la lógica de hatch (insertar bee en DB + crear token)
+// Helper that simulates hatch's logic (insert bee in DB + create token)
 function runHatch(name: string, engine = "opencode") {
   const db = openDb(dbPath(root, config));
   const beeToken = generateToken();
@@ -52,7 +52,7 @@ function runHatch(name: string, engine = "opencode") {
   return beeToken;
 }
 
-test("hatch crea bee en DB y token en disco", () => {
+test("hatch creates a bee in the DB and a token on disk", () => {
   const token = runHatch("db-bee");
   const db = openDb(dbPath(root, config));
   const row = db.prepare("SELECT name, engine, status FROM bees WHERE name = ?").get("db-bee") as any;
@@ -66,7 +66,7 @@ test("hatch crea bee en DB y token en disco", () => {
   expect(readFileSync(tokenPath, "utf8")).toBe(token);
 });
 
-test("hatch rechaza nombre de bee inválido", () => {
+test("hatch rejects an invalid bee name", () => {
   expect(() => {
     const db = openDb(dbPath(root, config));
     const name = "INVALID";
@@ -76,17 +76,17 @@ test("hatch rechaza nombre de bee inválido", () => {
   }).not.toThrow();
 });
 
-test("kill detecta tareas pendientes y rechaza sin --force", () => {
+test("kill detects pending tasks and refuses without --force", () => {
   const db = openDb(dbPath(root, config));
 
-  // Crear bee asignable
+  // Create an assignable bee
   db.prepare("INSERT INTO bees (name, worktree_path, engine, connection_mode, token_hash, status) VALUES ('db-bee', ?, 'opencode', 'cli', ?, 'idle')")
     .run(join(honeycombDir(root, config), "db-bee"), hashToken(generateToken()));
 
   const beeRow = db.prepare("SELECT id FROM bees WHERE name = 'db-bee'").get() as { id: number };
   expect(beeRow).toBeDefined();
 
-  // Crear tarea pending para ese bee
+  // Create a pending task for that bee
   db.prepare("INSERT INTO tasks (code, slug, assigned_to, created_by, status, description) VALUES ('TASK-99', 'test', ?, 1, 'pending', 'Test')")
     .run(beeRow.id);
 
@@ -97,7 +97,7 @@ test("kill detecta tareas pendientes y rechaza sin --force", () => {
   db.close();
 });
 
-test("kill reasigna tareas a otro bee", () => {
+test("kill reassigns tasks to another bee", () => {
   const db = openDb(dbPath(root, config));
 
   db.prepare("INSERT INTO bees (name, worktree_path, engine, connection_mode, token_hash, status) VALUES ('db-bee', ?, 'opencode', 'cli', ?, 'idle')")
@@ -120,12 +120,12 @@ test("kill reasigna tareas a otro bee", () => {
   db.close();
 });
 
-test("start rechaza si esquema desactualizado", () => {
+test("start rejects an outdated schema", () => {
   const db = openDb(dbPath(root, config));
   expect(getSchemaVersion(db)).toBe(1);
   db.close();
 });
 
-test("doctor detecta falta de .gitignore block", () => {
+test("doctor detects a missing .gitignore block", () => {
   expect(checkGitignore(root, config.honeycomb_path)).toBe(true);
 });

@@ -1,7 +1,7 @@
 {
   "name": "amalia",
   "version": "0.1.0",
-  "description": "Orquestador multi-agente sobre git worktrees",
+  "description": "Multi-agent orchestrator over git worktrees",
   "type": "module",
   "bin": {
     "amalia": "bin/amalia.js"

@@ -44,14 +44,14 @@
 
   async function doConnect() {
     token = tokenInput.value.trim();
-    if (!token) { setStatus("error", "Ingresa un token"); return; }
-    setStatus("connecting", "Conectando...");
+    if (!token) { setStatus("error", "Enter a token"); return; }
+    setStatus("connecting", "Connecting...");
 
     if (socket) socket.disconnect();
 
     socket = io({ auth: { token } });
     socket.on("connect", () => { setStatus("connected", ""); loadAll(); });
-    socket.on("connect_error", () => setStatus("error", "Token inválido o servidor no disponible"));
+    socket.on("connect_error", () => setStatus("error", "Invalid token or server unavailable"));
     socket.on("disconnect", () => setStatus("disconnected", ""));
 
     registerSocketHandlers();
@@ -127,7 +127,7 @@
   }
 
   function renderTasks() {
-    if (!tasks.length) { tasksTbody.innerHTML = "<tr><td colspan='5'>Sin tareas</td></tr>"; return; }
+    if (!tasks.length) { tasksTbody.innerHTML = "<tr><td colspan='5'>No tasks</td></tr>"; return; }
     tasksTbody.innerHTML = tasks.map((t) =>
       `<tr class="clickable" data-code="${esc(t.code)}">
         <td>${esc(t.code)}</td>
@@ -146,7 +146,7 @@
   async function showTaskDetail(code) {
     try {
       const res = await api("/tasks/" + encodeURIComponent(code));
-      if (!res.ok) { taskDetail.innerHTML = "<p class='hint'>Error al cargar detalle</p>"; return; }
+      if (!res.ok) { taskDetail.innerHTML = "<p class='hint'>Error loading detail</p>"; return; }
       const t = await res.json();
 
       const resRes = await api("/tasks/" + encodeURIComponent(code) + "/results");
@@ -157,25 +157,25 @@
 
       let html = `<h3>${esc(t.code)} — ${esc(t.slug)}</h3>
         <dl>
-          <dt>Estado</dt><dd><span class="status-badge ${esc(t.status)}">${esc(t.status)}</span></dd>
-          <dt>Prioridad</dt><dd>${esc(t.priority)}</dd>
-          <dt>Bee asignado</dt><dd>${esc(t.assigned_to_name || t.assigned_to)}</dd>
-          <dt>Descripción</dt><dd>${esc(t.description || "—")}</dd>`;
-      if (t.acceptance_criteria) html += `<dt>Criterios de aceptación</dt><dd>${esc(t.acceptance_criteria)}</dd>`;
+          <dt>Status</dt><dd><span class="status-badge ${esc(t.status)}">${esc(t.status)}</span></dd>
+          <dt>Priority</dt><dd>${esc(t.priority)}</dd>
+          <dt>Assigned bee</dt><dd>${esc(t.assigned_to_name || t.assigned_to)}</dd>
+          <dt>Description</dt><dd>${esc(t.description || "—")}</dd>`;
+      if (t.acceptance_criteria) html += `<dt>Acceptance criteria</dt><dd>${esc(t.acceptance_criteria)}</dd>`;
       if (t.block_reason) html += `<dt>Block reason</dt><dd>${esc(t.block_reason)}</dd>`;
       if (t.locked_by) html += `<dt>Locked by</dt><dd>bee #${t.locked_by} (${esc(t.locked_by_instance || "?")})</dd>`;
       if (t.lease_expires_at) html += `<dt>Lease expires</dt><dd>${esc(t.lease_expires_at)}</dd>`;
-      html += `<dt>Revisiones</dt><dd>rev ${t.rev}, attempts ${t.attempts}/${t.max_attempts}</dd>`;
+      html += `<dt>Revisions</dt><dd>rev ${t.rev}, attempts ${t.attempts}/${t.max_attempts}</dd>`;
 
       if (deps.length) {
-        html += `<dt>Dependencias</dt><dd>${deps.map((d) => esc(d.depends_on_task_code || d.depends_on_task_id)).join(", ")}</dd>`;
+        html += `<dt>Dependencies</dt><dd>${deps.map((d) => esc(d.depends_on_task_code || d.depends_on_task_id)).join(", ")}</dd>`;
       }
 
       if (results.length) {
-        html += `<dt>Resultados</dt>`;
+        html += `<dt>Results</dt>`;
         for (const r of results) {
           html += `<dd style="margin-top:0.3rem;padding:0.3rem;background:var(--bg);border-radius:4px;">
-            <strong>${esc(r.outcome)}</strong> (intento ${r.attempt})<br>
+            <strong>${esc(r.outcome)}</strong> (attempt ${r.attempt})<br>
             <span style="font-size:0.75rem;color:var(--muted)">key: ${esc(r.idempotency_key)}</span>`;
           if (r.files_changed) html += `<br>files: ${esc(JSON.stringify(r.files_changed))}`;
           if (r.decisions) html += `<br>decisions: ${esc(r.decisions)}`;
@@ -187,7 +187,7 @@
       html += `</dl>`;
       taskDetail.innerHTML = html;
     } catch {
-      taskDetail.innerHTML = "<p class='hint'>Error al cargar detalle</p>";
+      taskDetail.innerHTML = "<p class='hint'>Error loading detail</p>";
     }
   }
 
@@ -197,7 +197,7 @@
 
   function populateBeeFilter() {
     const current = filterBee.value;
-    filterBee.innerHTML = "<option value=''>Todos</option>" +
+    filterBee.innerHTML = "<option value=''>All</option>" +
       bees.map((b) => `<option value="${esc(b.name)}" ${b.name === current ? "selected" : ""}>${esc(b.name)}</option>`).join("");
   }
 
@@ -221,7 +221,7 @@
       max_attempts: parseInt($("#create-max-attempts").value, 10),
     };
     if (!body.description || !body.slug) {
-      createResult.textContent = "Descripción y slug son requeridos";
+      createResult.textContent = "Description and slug are required";
       createResult.className = "error";
       return;
     }
@@ -233,7 +233,7 @@
         createResult.textContent = "Error: " + (data.error || JSON.stringify(data));
         createResult.className = "error";
       } else {
-        createResult.textContent = "Creada " + data.code;
+        createResult.textContent = "Created " + data.code;
         createResult.className = "ok";
         $("#create-desc").value = "";
         $("#create-slug").value = "";
@@ -241,7 +241,7 @@
         loadTasks();
       }
     } catch {
-      createResult.textContent = "Error de red";
+      createResult.textContent = "Network error";
       createResult.className = "error";
     }
   });

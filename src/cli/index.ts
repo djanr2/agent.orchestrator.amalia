@@ -16,7 +16,7 @@ const program = new Command();
 
 program
   .name("amalia")
-  .description("Orquestador multi-agente sobre git worktrees")
+  .description("Multi-agent orchestrator over git worktrees")
   .version("0.1.0");
 
 registerInit(program);

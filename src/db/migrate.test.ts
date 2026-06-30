@@ -2,7 +2,7 @@ import { test, expect } from "vitest";
 import { openDb, applySchema } from "./index.js";
 import { migrate, isSchemaCurrent } from "./migrate.js";
 
-test("migrate no hace nada si ya está al día", () => {
+test("migrate does nothing if already up to date", () => {
   const db = openDb(":memory:");
   applySchema(db);
   expect(migrate(db)).toBe(1);

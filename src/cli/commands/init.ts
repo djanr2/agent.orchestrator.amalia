@@ -23,8 +23,8 @@ interface CreatedState {
 export function registerInit(program: Command): void {
   program
     .command("init")
-    .description("Inicializar un nuevo panal Amalia")
-    .option("--honeycomb-path <path>", "Ruta del panal", "honeycomb")
+    .description("Initialize a new Amalia hive")
+    .option("--honeycomb-path <path>", "Hive path", "honeycomb")
     .action(async (opts: { honeycombPath: string }) => {
       const rootDir = process.cwd();
       const honeyPath = opts.honeycombPath;
@@ -43,17 +43,17 @@ export function registerInit(program: Command): void {
         const ver = await gitVersion();
         const m = ver.match(/(\d+)\.(\d+)/);
         if (!m || Number(m[1]) < 2 || (Number(m[1]) === 2 && Number(m[2]) < 5)) {
-          console.error("Error: se requiere Git >= 2.5"); process.exit(1);
+          console.error("Error: Git >= 2.5 is required"); process.exit(1);
         }
-      } catch { console.error("Error: Git no disponible"); process.exit(1); }
+      } catch { console.error("Error: Git is not available"); process.exit(1); }
 
       if (!(await isInsideWorkTree(rootDir))) {
-        console.error("Error: no estás dentro de un repositorio Git"); process.exit(1);
+        console.error("Error: you are not inside a Git repository"); process.exit(1);
       }
 
       const nodeMajor = Number(process.version.slice(1).split(".")[0]);
       if (nodeMajor < 20) {
-        console.error(`Error: se requiere Node >= 20 (actual: ${process.version})`); process.exit(1);
+        console.error(`Error: Node >= 20 is required (current: ${process.version})`); process.exit(1);
       }
 
       try {
@@ -88,14 +88,14 @@ export function registerInit(program: Command): void {
         const vars: Record<string, string> = {
           name: "amalia",
           engine: "opencode",
-          role: "Operador / orquestador",
-          modo_conexion: "cli",
-          modelo: "",
-          comando_arranque: "",
+          role: "Operator / orchestrator",
+          connection_mode: "cli",
+          model: "",
+          start_command: "",
           endpoint: "",
           auth_env: "",
           api_base_url: defaultApiBaseUrl(),
-          heartbeat_segundos: "60",
+          heartbeat_seconds: "60",
         };
         for (const name of ["AGENTS.md", "bee.md"]) {
           const src = join(tmpl, name);
@@ -123,12 +123,12 @@ export function registerInit(program: Command): void {
         ensureGitignore(rootDir, honeyPath);
         created.gitignoreWritten = true;
 
-        console.log(`✓ Panal inicializado en ${honeyPath}/`);
-        console.log(`  Rama objetivo: ${targetBranch}`);
-        console.log(`  Token operador: ${opToken.slice(0, 12)}...`);
+        console.log(`✓ Hive initialized in ${honeyPath}/`);
+        console.log(`  Target branch: ${targetBranch}`);
+        console.log(`  Operator token: ${opToken.slice(0, 12)}...`);
       } catch (e: any) {
         cleanup();
-        console.error("Error durante init — se revirtieron los cambios:");
+        console.error("Error during init — changes were rolled back:");
         console.error(`  ${e.message ?? e}`);
         process.exit(1);
       }

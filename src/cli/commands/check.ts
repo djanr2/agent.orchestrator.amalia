@@ -7,11 +7,11 @@ import { apiBaseUrl } from "../api.js";
 export function registerCheck(program: Command): void {
   program
     .command("check")
-    .description("Ver estado de bees y tareas")
-    .argument("[bee]", "Nombre del bee (opcional)")
+    .description("Show bee and task status")
+    .argument("[bee]", "Bee name (optional)")
     .action(async (bee?: string) => {
       const root = findRoot(process.cwd());
-      if (!root) { console.error("Error: no se encontró .amalia-root"); process.exit(1); }
+      if (!root) { console.error("Error: .amalia-root not found"); process.exit(1); }
       const config = readConfig(root);
 
       try {
@@ -32,7 +32,7 @@ export function registerCheck(program: Command): void {
             if (bee && entry !== bee) continue;
             const tDir = join(bDir, "tasks");
             const files = existsSync(tDir) ? readdirSync(tDir).filter((f) => f.endsWith(".task.md")) : [];
-            console.log(`Bee: ${entry} (local — API no disponible, ${files.length} tareas)`);
+            console.log(`Bee: ${entry} (local — API unavailable, ${files.length} tasks)`);
           }
         }
       }

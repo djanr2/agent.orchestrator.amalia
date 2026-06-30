@@ -3,7 +3,7 @@ import { openDb, applySchema } from "../../db/index.js";
 import { runMaintenance } from "./maintenance.js";
 import { hashToken } from "../auth.js";
 
-test("runMaintenance marca bees offline y libera sus tareas", () => {
+test("runMaintenance marks bees offline and frees their tasks", () => {
   const db = openDb(":memory:");
   applySchema(db);
 
@@ -19,15 +19,15 @@ test("runMaintenance marca bees offline y libera sus tareas", () => {
   db.prepare(
     `INSERT INTO tasks (code, slug, assigned_to, created_by, status, description, locked_by, lease_expires_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run("TASK-1", "stuck", 1, 1, "in_progress", "Tarea atascada", 1, "2020-01-01 00:00:00");
+  ).run("TASK-1", "stuck", 1, 1, "in_progress", "Stuck task", 1, "2020-01-01 00:00:00");
 
   db.prepare(
     "INSERT INTO tasks (code, slug, assigned_to, created_by, status, description) VALUES (?, ?, ?, ?, ?, ?)",
-  ).run("TASK-2", "pending-other", 2, 1, "pending", "Tarea pendiente de otro bee");
+  ).run("TASK-2", "pending-other", 2, 1, "pending", "Pending task for another bee");
 
   db.prepare(
     "INSERT INTO tasks (code, slug, assigned_to, created_by, status, description) VALUES (?, ?, ?, ?, ?, ?)",
-  ).run("TASK-3", "pending-own", 1, 1, "pending", "Tarea pendiente del zombie");
+  ).run("TASK-3", "pending-own", 1, 1, "pending", "Pending task for the zombie");
 
   runMaintenance(db, null);
 
@@ -55,7 +55,7 @@ test("runMaintenance marca bees offline y libera sus tareas", () => {
   expect(ownPending.status).toBe("pending");
 });
 
-test("watchdog bloquea tarea con lease vencido si el bee sigue online", () => {
+test("watchdog blocks a task with an expired lease if the bee is still online", () => {
   const db = openDb(":memory:");
   applySchema(db);
 
@@ -66,11 +66,11 @@ test("watchdog bloquea tarea con lease vencido si el bee sigue online", () => {
              datetime('now', '-30 seconds'))`,
   ).run(hashToken("s-token"));
 
-  // Tarea con lease vencido, bee online
+  // Task with an expired lease, bee online
   db.prepare(
     `INSERT INTO tasks (code, slug, assigned_to, created_by, status, description, locked_by, claimed_at, lease_expires_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run("TASK-L", "lease-expired", 1, 1, "in_progress", "Lease vencido, bee online", 1,
+  ).run("TASK-L", "lease-expired", 1, 1, "in_progress", "Expired lease, bee online", 1,
          "2020-01-01 00:00:00", "2020-01-01 00:00:00");
 
   runMaintenance(db, null);
@@ -87,7 +87,7 @@ test("watchdog bloquea tarea con lease vencido si el bee sigue online", () => {
   expect(task.locked_by).toBeNull();
 });
 
-test("watchdog bloquea tarea que excede max_run_seconds incluso con lease fresco", () => {
+test("watchdog blocks a task that exceeds max_run_seconds even with a fresh lease", () => {
   const db = openDb(":memory:");
   applySchema(db);
 
@@ -98,12 +98,12 @@ test("watchdog bloquea tarea que excede max_run_seconds incluso con lease fresco
              datetime('now', '-5 seconds'))`,
   ).run(hashToken("r-token"));
 
-  // Tarea con max_run_seconds=60, claimed_at hace 120s (excedido), pero lease fresco (+5 min)
+  // Task with max_run_seconds=60, claimed_at 120s ago (exceeded), but a fresh lease (+5 min)
   db.prepare(
     `INSERT INTO tasks (code, slug, assigned_to, created_by, status, description,
       locked_by, claimed_at, lease_expires_at, max_run_seconds)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run("TASK-M", "max-run", 1, 1, "in_progress", "Corrió más de max_run_seconds", 1,
+  ).run("TASK-M", "max-run", 1, 1, "in_progress", "Ran longer than max_run_seconds", 1,
          "2020-01-01 00:00:00", "2125-01-01 00:00:00", 60);
 
   runMaintenance(db, null);
@@ -120,7 +120,7 @@ test("watchdog bloquea tarea que excede max_run_seconds incluso con lease fresco
   expect(task.locked_by).toBeNull();
 });
 
-test("watchdog NO bloquea tarea con lease fresco y max_run_seconds no excedido", () => {
+test("watchdog does NOT block a task with a fresh lease and max_run_seconds not exceeded", () => {
   const db = openDb(":memory:");
   applySchema(db);
 
@@ -135,7 +135,7 @@ test("watchdog NO bloquea tarea con lease fresco y max_run_seconds no excedido",
     `INSERT INTO tasks (code, slug, assigned_to, created_by, status, description,
       locked_by, claimed_at, lease_expires_at, max_run_seconds)
      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, ?)`,
-  ).run("TASK-F", "fine", 1, 1, "in_progress", "Todo ok", 1,
+  ).run("TASK-F", "fine", 1, 1, "in_progress", "All good", 1,
          "2125-01-01 00:00:00", 9999999);
 
   runMaintenance(db, null);

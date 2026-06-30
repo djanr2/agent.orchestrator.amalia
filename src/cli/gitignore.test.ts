@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ensureGitignore, checkGitignore } from "./gitignore.js";
 
-test("ensureGitignore crea archivo con bloque Amalia", () => {
+test("ensureGitignore creates a file with the Amalia block", () => {
   const dir = join(tmpdir(), `amalia-gitignore-${Date.now()}`);
   mkdirSync(dir, { recursive: true });
 
@@ -17,12 +17,12 @@ test("ensureGitignore crea archivo con bloque Amalia", () => {
   rmSync(dir, { recursive: true });
 });
 
-test("ensureGitignore no duplica bloque si ya existe", () => {
+test("ensureGitignore doesn't duplicate the block if it already exists", () => {
   const dir = join(tmpdir(), `amalia-gitignore-${Date.now()}`);
   mkdirSync(dir, { recursive: true });
 
-  ensureGitignore(dir, "panal");
-  ensureGitignore(dir, "panal");
+  ensureGitignore(dir, "hive");
+  ensureGitignore(dir, "hive");
 
   const content = readFileSync(join(dir, ".gitignore"), "utf8");
   const matches = content.match(/\.amalia-root/g);
@@ -31,7 +31,7 @@ test("ensureGitignore no duplica bloque si ya existe", () => {
   rmSync(dir, { recursive: true });
 });
 
-test("ensureGitignore respeta contenido previo", () => {
+test("ensureGitignore preserves previous content", () => {
   const dir = join(tmpdir(), `amalia-gitignore-${Date.now()}`);
   mkdirSync(dir, { recursive: true });
 
@@ -45,6 +45,6 @@ test("ensureGitignore respeta contenido previo", () => {
   rmSync(dir, { recursive: true });
 });
 
-test("checkGitignore devuelve false si no existe .gitignore", () => {
-  expect(checkGitignore("/no-existe", "x")).toBe(false);
+test("checkGitignore returns false if .gitignore doesn't exist", () => {
+  expect(checkGitignore("/does-not-exist", "x")).toBe(false);
 });

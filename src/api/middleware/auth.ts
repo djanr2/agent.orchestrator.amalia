@@ -14,13 +14,13 @@ export function authMiddleware(db: DatabaseSync) {
   return (req: Request, res: Response, next: NextFunction): void => {
     const header = req.headers.authorization;
     if (!header || !header.startsWith("Bearer ")) {
-      res.status(401).json({ error: "UNAUTHORIZED", message: "Token requerido" });
+      res.status(401).json({ error: "UNAUTHORIZED", message: "Token required" });
       return;
     }
     const token = header.slice(7);
     const identity = identifyByToken(db, token);
     if (!identity) {
-      res.status(401).json({ error: "UNAUTHORIZED", message: "Token inválido" });
+      res.status(401).json({ error: "UNAUTHORIZED", message: "Invalid token" });
       return;
     }
     req.identity = identity;
@@ -30,7 +30,7 @@ export function authMiddleware(db: DatabaseSync) {
 
 export function requireOperator(req: Request, res: Response, next: NextFunction): void {
   if (!req.identity?.isOperator) {
-    res.status(403).json({ error: "FORBIDDEN", message: "Se requiere rol operador" });
+    res.status(403).json({ error: "FORBIDDEN", message: "Operator role required" });
     return;
   }
   next();

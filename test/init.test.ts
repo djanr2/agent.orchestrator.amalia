@@ -9,7 +9,7 @@ import { generateToken, hashToken } from "../src/api/auth.js";
 import { ensureGitignore } from "../src/cli/gitignore.js";
 import { SCHEMA_VERSION } from "../src/shared/types.js";
 
-test("init crea estructura de panal correcta", () => {
+test("init creates the correct hive structure", () => {
   const root = join(tmpdir(), `amalia-init-test-${Date.now()}`);
   mkdirSync(root, { recursive: true });
 

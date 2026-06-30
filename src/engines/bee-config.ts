@@ -2,25 +2,25 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 export interface BeeConfig {
-  motor: string;
-  modo_conexion: string;
-  modelo: string | null;
-  heartbeat_segundos: number;
+  engine: string;
+  connection_mode: string;
+  model: string | null;
+  heartbeat_seconds: number;
   bee_name: string;
   api_base_url?: string;
-  comando_arranque?: string;
+  start_command?: string;
   endpoint?: string;
   auth_env?: string;
 }
 
 /**
- * Lee la config de bee.md buscando secciones `## Motor` y `## Conexión al Orchestrator API`.
- * Cada sección lista `- **clave:** valor`.
+ * Reads bee.md config by looking for the `## Engine` and `## Orchestrator API Connection`
+ * sections. Each section lists `- **key:** value`.
  */
 export function readBeeConfig(beeDir: string): BeeConfig {
   const beeMdPath = join(beeDir, "bee.md");
   if (!existsSync(beeMdPath)) {
-    throw new Error(`No se encuentra bee.md en ${beeDir}`);
+    throw new Error(`bee.md not found in ${beeDir}`);
   }
   const raw = readFileSync(beeMdPath, "utf8");
 
@@ -41,25 +41,25 @@ export function readBeeConfig(beeDir: string): BeeConfig {
   }
 
   const config: BeeConfig = {
-    motor: result["Motor"] ?? "",
-    modo_conexion: result["Modo de conexión"] ?? "cli",
-    modelo: result["Modelo"] ?? null,
-    heartbeat_segundos: Number(result["Heartbeat (segundos)"]) || 60,
-    bee_name: result["Nombre"] ?? "",
-    api_base_url: result["URL de la API"] ?? undefined,
-    comando_arranque: result["Comando de arranque"] ?? undefined,
+    engine: result["Engine"] ?? "",
+    connection_mode: result["Connection mode"] ?? "cli",
+    model: result["Model"] ?? null,
+    heartbeat_seconds: Number(result["Heartbeat (seconds)"]) || 60,
+    bee_name: result["Name"] ?? "",
+    api_base_url: result["API URL"] ?? undefined,
+    start_command: result["Start command"] ?? undefined,
     endpoint: result["Endpoint"] ?? undefined,
-    auth_env: result["Variable de entorno (auth)"] ?? undefined,
+    auth_env: result["Auth env var"] ?? undefined,
   };
 
-  if (!config.motor) throw new Error("bee.md: falta 'Motor' en sección ## Motor");
+  if (!config.engine) throw new Error("bee.md: missing 'Engine' in section ## Engine");
   return config;
 }
 
 export function readBeeToken(secretsDir: string, beeName: string): string {
   const tokenPath = join(secretsDir, `${beeName}.token`);
   if (!existsSync(tokenPath)) {
-    throw new Error(`No se encuentra token para bee '${beeName}' en ${tokenPath}`);
+    throw new Error(`Token not found for bee '${beeName}' at ${tokenPath}`);
   }
   return readFileSync(tokenPath, "utf8").trim();
 }

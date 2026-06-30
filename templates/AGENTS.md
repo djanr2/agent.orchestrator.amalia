@@ -1,9 +1,9 @@
-# Amalia — Worktree de Integración
+# Amalia — Integration Worktree
 
-Este worktree central recibe el trabajo integrado de todos los bees.
+This central worktree receives the integrated work from all bees.
 
-## Convención
+## Convention
 
-- Cada bee trabaja en su propio worktree dentro de `honeycomb/<bee>/`.
-- Las integraciones se hacen via `git merge --no-ff` desde la rama del bee.
-- Usar el trailer `Amalia-Task: TASK-XX` en los commits para rastrear cobertura.
+- Each bee works in its own worktree inside `honeycomb/<bee>/`.
+- Integrations are done via `git merge --no-ff` from the bee's branch.
+- Use the `Amalia-Task: TASK-XX` trailer in commits to track coverage.

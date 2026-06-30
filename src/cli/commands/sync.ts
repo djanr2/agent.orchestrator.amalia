@@ -8,10 +8,10 @@ import { apiBaseUrl } from "../api.js";
 export function registerSync(program: Command): void {
   program
     .command("sync")
-    .description("Reconciliar archivos locales con la base de datos")
+    .description("Reconcile local files with the database")
     .action(async () => {
       const root = findRoot(process.cwd());
-      if (!root) { console.error("Error: no se encontró .amalia-root"); process.exit(1); }
+      if (!root) { console.error("Error: .amalia-root not found"); process.exit(1); }
       const config = readConfig(root);
 
       try {
@@ -35,16 +35,16 @@ export function registerSync(program: Command): void {
               const local = readTaskFile(beeDir, t.slug);
               if (!local || local.frontmatter.rev < t.rev) {
                 writeTaskFile(beeDir, { ...t, beeName });
-                console.log(`  Actualizado ${t.slug}.task.md (rev ${t.rev})`);
+                console.log(`  Updated ${t.slug}.task.md (rev ${t.rev})`);
               }
               if (local && local.frontmatter.rev > t.rev) {
-                console.log(`  Conflicto: ${t.slug}.task.md tiene rev ${local.frontmatter.rev} > DB ${t.rev}`);
+                console.log(`  Conflict: ${t.slug}.task.md has rev ${local.frontmatter.rev} > DB ${t.rev}`);
               }
             }
           }
         }
       } catch {
-        console.log("API no disponible, no se puede sincronizar");
+        console.log("API unavailable, cannot sync");
       }
     });
 }

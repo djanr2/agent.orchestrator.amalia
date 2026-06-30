@@ -28,8 +28,8 @@ function defaultPort(): number {
 const ESC = String.fromCharCode(27);
 const BEL = String.fromCharCode(7);
 
-/** Envuelve la URL en un hyperlink OSC 8: clicable en terminales que lo soportan
- *  (Windows Terminal, iTerm2, VS Code...); en el resto se ve igual que texto plano. */
+/** Wraps the URL in an OSC 8 hyperlink: clickable in terminals that support it
+ *  (Windows Terminal, iTerm2, VS Code...); plain text everywhere else. */
 function terminalLink(url: string): string {
   return ESC + "]8;;" + url + BEL + url + ESC + "]8;;" + BEL;
 }
@@ -39,7 +39,7 @@ function printDashboardUrl(port: number, staticDirExists: boolean): void {
   if (staticDirExists) {
     console.log(`  Dashboard: ${terminalLink(url)}`);
   } else {
-    console.log(`  Dashboard no disponible (no se encontró la carpeta dashboard/)`);
+    console.log(`  Dashboard unavailable (dashboard/ folder not found)`);
   }
 }
 
@@ -47,28 +47,28 @@ function printTokenInfo(root: string, config: AmaliaConfig): void {
   const tokenPath = join(secretsDir(root, config), "amalia.token");
   if (existsSync(tokenPath)) {
     const token = readFileSync(tokenPath, "utf8").trim();
-    console.log(`  Token operador: ${token}`);
+    console.log(`  Operator token: ${token}`);
   } else {
-    console.log(`  Token operador no encontrado en ${tokenPath}`);
+    console.log(`  Operator token not found at ${tokenPath}`);
   }
-  console.log(`  (guardado en ${tokenPath})`);
+  console.log(`  (saved at ${tokenPath})`);
 }
 
 export function registerStart(program: Command): void {
   program
     .command("start")
-    .description("Levantar el servidor API del orquestador")
-    .option("-p, --port <port>", `Puerto (default: ${defaultPort()}, env: AMALIA_PORT)`, String(defaultPort()))
-    .option("-d, --detach", "Correr en segundo plano (libera la terminal)")
+    .description("Start the orchestrator API server")
+    .option("-p, --port <port>", `Port (default: ${defaultPort()}, env: AMALIA_PORT)`, String(defaultPort()))
+    .option("-d, --detach", "Run in the background (frees the terminal)")
     .action(async (opts: { port: string; detach?: boolean }) => {
       const root = findRoot(process.cwd());
-      if (!root) { console.error("Error: no se encontró .amalia-root"); process.exit(1); }
+      if (!root) { console.error("Error: .amalia-root not found"); process.exit(1); }
       const config = readConfig(root);
 
       const db = openDb(dbPath(root, config));
       const v = getSchemaVersion(db);
       if (v !== SCHEMA_VERSION) {
-        console.error(`Error: esquema desactualizado (v${v}), corre \`amalia doctor\``);
+        console.error(`Error: schema out of date (v${v}), run \`amalia doctor\``);
         process.exit(1);
       }
 
@@ -88,10 +88,10 @@ export function registerStart(program: Command): void {
         );
         child.unref();
         writeFileSync(pidPath(root, config), String(child.pid), "utf8");
-        console.log(`✓ API arrancando en segundo plano (PID ${child.pid})`);
+        console.log(`✓ API starting in the background (PID ${child.pid})`);
         printDashboardUrl(port, staticDirExists);
         console.log(`  Logs: ${logPath}`);
-        console.log(`  Detener con: amalia stop`);
+        console.log(`  Stop with: amalia stop`);
         printTokenInfo(root, config);
         return;
       }
@@ -103,7 +103,7 @@ export function registerStart(program: Command): void {
       const pid = String(process.pid);
       writeFileSync(pidPath(root, config), pid, "utf8");
 
-      console.log(`✓ API escuchando en ${terminalLink(`http://127.0.0.1:${port}/api/orchestrator`)}`);
+      console.log(`✓ API listening on ${terminalLink(`http://127.0.0.1:${port}/api/orchestrator`)}`);
       printDashboardUrl(port, staticDirExists);
       console.log(`  PID ${pid}`);
       printTokenInfo(root, config);

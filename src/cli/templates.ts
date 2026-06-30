@@ -1,4 +1,4 @@
-/** Sustituye placeholders `{{clave}}` en una plantilla. Las claves sin valor quedan vacías. */
+/** Substitutes `{{key}}` placeholders in a template. Keys with no value are left blank. */
 export function renderTemplate(content: string, vars: Record<string, string>): string {
   return content.replace(/\{\{(\w+)\}\}/g, (_, key: string) => vars[key] ?? "");
 }

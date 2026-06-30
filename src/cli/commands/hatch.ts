@@ -14,18 +14,18 @@ const PACKAGE_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", ".
 export function registerHatch(program: Command): void {
   program
     .command("hatch")
-    .description("Crear un nuevo bee en el panal")
-    .argument("<name>", "Nombre del bee (ej: database-bee)")
-    .option("--engine <engine>", "Motor del bee (opencode, claude-code, etc.)", "opencode")
-    .option("--branch <branch>", "Rama del worktree del bee")
-    .option("--role <role>", "Descripción del rol")
+    .description("Create a new bee in the hive")
+    .argument("<name>", "Bee name (e.g. database-bee)")
+    .option("--engine <engine>", "Bee engine (opencode, claude-code, etc.)", "opencode")
+    .option("--branch <branch>", "Branch for the bee's worktree")
+    .option("--role <role>", "Role description")
     .action(async (name: string, opts: { engine: string; branch?: string; role?: string }) => {
       if (!validateBeeName(name)) {
-        console.error("Error: nombre de bee inválido (debe ser ej: database-bee)"); process.exit(1);
+        console.error("Error: invalid bee name (must look like: database-bee)"); process.exit(1);
       }
 
       const root = findRoot(process.cwd());
-      if (!root) { console.error("Error: no se encontró .amalia-root"); process.exit(1); }
+      if (!root) { console.error("Error: .amalia-root not found"); process.exit(1); }
       const config = readConfig(root);
 
       const beeToken = generateToken();
@@ -39,9 +39,9 @@ export function registerHatch(program: Command): void {
         ).run(name, beeDir, opts.engine, "cli", hashToken(beeToken));
       } catch (e: any) {
         if (e.message?.includes("UNIQUE")) {
-          console.error("Error: ya existe un bee con ese nombre");
+          console.error("Error: a bee with that name already exists");
         } else {
-          console.error(`Error al crear bee en DB: ${e.message}`);
+          console.error(`Error creating bee in DB: ${e.message}`);
         }
         db.close();
         process.exit(1);
@@ -57,13 +57,13 @@ export function registerHatch(program: Command): void {
         try {
           await worktreeAdd(root, beeDir, branch);
         } catch (e: any) {
-          // Revertir: la fila en DB y el token ya se crearon, pero sin worktree
-          // real el bee queda en un estado inconsistente.
+          // Roll back: the DB row and token were already created, but without a
+          // real worktree the bee would be left in an inconsistent state.
           try { rmSync(tokenPath, { force: true }); } catch { /* ignore */ }
           const cleanupDb = openDb(dbPath(root, config));
           try { cleanupDb.prepare("DELETE FROM bees WHERE name = ?").run(name); } catch { /* ignore */ }
           cleanupDb.close();
-          console.error(`Error al crear worktree para '${name}': ${e.message}`);
+          console.error(`Error creating worktree for '${name}': ${e.message}`);
           process.exit(1);
         }
       }
@@ -73,13 +73,13 @@ export function registerHatch(program: Command): void {
         name,
         engine: opts.engine,
         role: opts.role ?? "",
-        modo_conexion: "cli",
-        modelo: "",
-        comando_arranque: "",
+        connection_mode: "cli",
+        model: "",
+        start_command: "",
         endpoint: "",
         auth_env: "",
         api_base_url: defaultApiBaseUrl(),
-        heartbeat_segundos: "60",
+        heartbeat_seconds: "60",
       };
       for (const f of ["bee.md", "AGENTS.md"]) {
         const src = join(tmpl, f);
@@ -96,7 +96,7 @@ export function registerHatch(program: Command): void {
         }
       }
 
-      console.log(`✓ Bee ${name} creado`);
+      console.log(`✓ Bee ${name} created`);
       console.log(`  Token: ${beeToken.slice(0, 12)}...`);
     });
 }

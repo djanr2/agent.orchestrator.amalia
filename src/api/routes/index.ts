@@ -29,7 +29,7 @@ export function registerRoutes(
     if (!req.identity) return;
     const beeId = Number(req.params.id);
     if (req.identity.beeId !== beeId) {
-      res.status(403).json({ error: "FORBIDDEN", message: "Solo puedes hacer heartbeat propio" });
+      res.status(403).json({ error: "FORBIDDEN", message: "You can only heartbeat your own bee" });
       return;
     }
     heartbeat(db, beeId);
@@ -89,7 +89,7 @@ export function registerRoutes(
     try {
       const result = claimTask(db, io, req.identity.beeId, req.params.code as string, parsed.data.instance_id, 60);
       if (!result.claimed) {
-        res.status(409).json({ claimed: false, message: "Tarea no disponible para claim" });
+        res.status(409).json({ claimed: false, message: "Task not available to claim" });
         return;
       }
       res.json(result);
@@ -137,7 +137,7 @@ export function registerRoutes(
   router.patch("/tasks/:code/status", auth, requireOperator, (req, res) => {
     const { status: newStatus } = req.body;
     if (!newStatus || !["pending", "in_progress", "completed", "blocked", "failed", "cancelled"].includes(newStatus)) {
-      res.status(400).json({ error: "VALIDATION_ERROR", message: "status inválido" });
+      res.status(400).json({ error: "VALIDATION_ERROR", message: "invalid status" });
       return;
     }
     const info = db.prepare(
@@ -155,10 +155,10 @@ export function registerRoutes(
     if (!req.identity) return;
     const parsed = req.body;
     if (!parsed.target_branch || !COMMIT_RE.test(parsed.commit_sha || "")) {
-      res.status(400).json({ error: "VALIDATION_ERROR", message: "target_branch requerido, commit_sha debe ser hex 7-40" });
+      res.status(400).json({ error: "VALIDATION_ERROR", message: "target_branch required, commit_sha must be 7-40 hex chars" });
       return;
     }
-    // TODO Etapa 3: ejecutar git merge/cherry-pick
+    // TODO Stage 3: run git merge/cherry-pick
     const info = db.prepare(
       `INSERT INTO integrations (bee_id, task_id, covered_tasks, commit_sha, target_branch, status)
        VALUES (?, ?, ?, ?, ?, 'pending')`,

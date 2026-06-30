@@ -28,15 +28,15 @@ afterAll(async () => {
   await server.close();
 });
 
-test("flujo completo: crear tarea → claim → reportar completada", async () => {
+test("full flow: create task → claim → report completed", async () => {
   const createRes = await fetch(`${baseUrl}/tasks`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OP_TOKEN}` },
     body: JSON.stringify({
       assigned_to: "database-bee",
-      description: "Tarea de integración",
+      description: "Integration task",
       priority: "high",
-      slug: "integracion",
+      slug: "integration",
       depends_on: [],
       max_attempts: 3,
     }),
@@ -76,12 +76,12 @@ test("flujo completo: crear tarea → claim → reportar completada", async () =
   expect(found.status).toBe("completed");
 });
 
-test("GET /tasks sin token devuelve 401", async () => {
+test("GET /tasks with no token returns 401", async () => {
   const res = await fetch(`${baseUrl}/tasks`);
   expect(res.status).toBe(401);
 });
 
-test("double claim devuelve claimed: false", async () => {
+test("double claim returns claimed: false", async () => {
   const res = await fetch(`${baseUrl}/tasks`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OP_TOKEN}` },
@@ -107,7 +107,7 @@ test("double claim devuelve claimed: false", async () => {
   expect((await c2.json()).claimed).toBe(false);
 });
 
-test("operador-only routes devuelven 403 para bee token", async () => {
+test("operator-only routes return 403 for a bee token", async () => {
   const routes = [
     ["POST", "/tasks", { assigned_to: "database-bee", description: "x", priority: "low", slug: "forbid-op", depends_on: [], max_attempts: 3 }],
   ] as const;
@@ -121,7 +121,7 @@ test("operador-only routes devuelven 403 para bee token", async () => {
   }
 });
 
-test("idempotencia: mismo idempotency_key no duplica resultado", async () => {
+test("idempotency: same idempotency_key does not duplicate the result", async () => {
   const res = await fetch(`${baseUrl}/tasks`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OP_TOKEN}` },
@@ -155,13 +155,13 @@ test("idempotencia: mismo idempotency_key no duplica resultado", async () => {
   expect(r1b.result.id).toBe(r2b.result.id);
 });
 
-test("fallo con retry exhausto propaga a dependiente", async () => {
+test("failure with exhausted retries propagates to the dependent", async () => {
   const depRes = await fetch(`${baseUrl}/tasks`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OP_TOKEN}` },
     body: JSON.stringify({
-      assigned_to: "database-bee", description: "Falla", priority: "low",
-      slug: "prop-falla", depends_on: [], max_attempts: 1,
+      assigned_to: "database-bee", description: "Fails", priority: "low",
+      slug: "prop-fail", depends_on: [], max_attempts: 1,
     }),
   });
   const dep = await depRes.json();
@@ -170,8 +170,8 @@ test("fallo con retry exhausto propaga a dependiente", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OP_TOKEN}` },
     body: JSON.stringify({
-      assigned_to: "database-bee", description: "Depende", priority: "low",
-      slug: "prop-depende", depends_on: [dep.code], max_attempts: 3,
+      assigned_to: "database-bee", description: "Depends on it", priority: "low",
+      slug: "prop-depends", depends_on: [dep.code], max_attempts: 3,
     }),
   });
   const main = await mainRes.json();
@@ -204,7 +204,7 @@ test("fallo con retry exhausto propaga a dependiente", async () => {
   expect(mainData.block_reason).toBe("upstream_failed");
 });
 
-test("PATCH /tasks/:code/status cambia estado manualmente", async () => {
+test("PATCH /tasks/:code/status manually changes the status", async () => {
   const res = await fetch(`${baseUrl}/tasks`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OP_TOKEN}` },
@@ -225,7 +225,7 @@ test("PATCH /tasks/:code/status cambia estado manualmente", async () => {
   expect(updated.status).toBe("cancelled");
 });
 
-test("PATCH /tasks/:code/status con status inválido devuelve 400", async () => {
+test("PATCH /tasks/:code/status with an invalid status returns 400", async () => {
   const res = await fetch(`${baseUrl}/tasks`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OP_TOKEN}` },
@@ -244,7 +244,7 @@ test("PATCH /tasks/:code/status con status inválido devuelve 400", async () => 
   expect(patchRes.status).toBe(400);
 });
 
-test("POST /tasks con token de bee devuelve 403", async () => {
+test("POST /tasks with a bee token returns 403", async () => {
   const res = await fetch(`${baseUrl}/tasks`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${BEE_TOKEN}` },
@@ -256,7 +256,7 @@ test("POST /tasks con token de bee devuelve 403", async () => {
   expect(res.status).toBe(403);
 });
 
-test("GET /tasks/:code/results devuelve resultados de una tarea", async () => {
+test("GET /tasks/:code/results returns a task's results", async () => {
   const res = await fetch(`${baseUrl}/tasks`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OP_TOKEN}` },

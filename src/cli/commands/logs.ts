@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { findRoot, readConfig, secretsDir, beeWorktree } from "../config.js";
 import { apiBaseUrl } from "../api.js";
@@ -7,11 +7,11 @@ import { apiBaseUrl } from "../api.js";
 export function registerLogs(program: Command): void {
   program
     .command("logs")
-    .description("Mostrar resultados y eventos de un bee")
-    .argument("<bee>", "Nombre del bee")
+    .description("Show a bee's results and events")
+    .argument("<bee>", "Bee name")
     .action(async (bee: string) => {
       const root = findRoot(process.cwd());
-      if (!root) { console.error("Error: no se encontró .amalia-root"); process.exit(1); }
+      if (!root) { console.error("Error: .amalia-root not found"); process.exit(1); }
       const config = readConfig(root);
 
       const tokenPath = join(secretsDir(root, config), "amalia.token");
@@ -21,7 +21,7 @@ export function registerLogs(program: Command): void {
         const eventsRes = await fetch(`${apiBaseUrl()}/events?bee=${bee}`, { headers: { Authorization: `Bearer ${token}` } });
         if (eventsRes.ok) {
           const events: any[] = await eventsRes.json();
-          console.log(`Eventos recientes de ${bee}:`);
+          console.log(`Recent events for ${bee}:`);
           for (const e of events.slice(0, 20)) {
             console.log(`  [${e.created_at ?? ""}] ${e.type}: ${JSON.stringify(e.payload ?? {})}`);
           }
@@ -32,7 +32,7 @@ export function registerLogs(program: Command): void {
         if (existsSync(resultsPath)) {
           console.log(readFileSync(resultsPath, "utf8"));
         } else {
-          console.log("No hay resultados locales ni API disponible");
+          console.log("No local results and API unavailable");
         }
       }
     });

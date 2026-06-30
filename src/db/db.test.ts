@@ -1,14 +1,14 @@
 import { test, expect } from "vitest";
 import { openDb, applySchema, getSchemaVersion } from "./index.js";
 
-test("crea esquema en DB nueva en memoria y reporta versión", () => {
+test("creates the schema on a new in-memory DB and reports the version", () => {
   const db = openDb(":memory:");
   expect(getSchemaVersion(db)).toBe(0);
   applySchema(db);
   expect(getSchemaVersion(db)).toBe(1);
 });
 
-test("las tablas esperadas existen", () => {
+test("the expected tables exist", () => {
   const db = openDb(":memory:");
   applySchema(db);
   const rows = db.prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").all() as { name: string }[];
@@ -18,7 +18,7 @@ test("las tablas esperadas existen", () => {
   }
 });
 
-test("foreign_keys está activo", () => {
+test("foreign_keys is active", () => {
   const db = openDb(":memory:");
   const row = db.prepare("PRAGMA foreign_keys;").get() as { foreign_keys: number };
   expect(row.foreign_keys).toBe(1);

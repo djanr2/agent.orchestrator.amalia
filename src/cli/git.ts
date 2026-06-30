@@ -21,7 +21,7 @@ function runGit(args: string[], cwd: string): Promise<GitResult> {
 
 export async function gitVersion(): Promise<string> {
   const r = await runGit(["--version"], process.cwd());
-  if (r.code !== 0) throw new Error("Git no está disponible");
+  if (r.code !== 0) throw new Error("Git is not available");
   return r.stdout.trim();
 }
 
@@ -41,16 +41,16 @@ async function branchExists(repoDir: string, branch: string): Promise<boolean> {
 }
 
 export async function worktreeAdd(repoDir: string, path: string, branch: string): Promise<GitResult> {
-  if (!validateBranchName(branch)) throw new Error(`Nombre de rama inválido: ${branch}`);
-  // `git worktree add <path> <branch>` exige que la rama ya exista; si no existe,
-  // hay que crearla con -b (caso típico: rama nueva derivada para un bee nuevo).
+  if (!validateBranchName(branch)) throw new Error(`Invalid branch name: ${branch}`);
+  // `git worktree add <path> <branch>` requires the branch to already exist; if it
+  // doesn't, it must be created with -b (typical case: new branch for a new bee).
   const exists = await branchExists(repoDir, branch);
   const args = exists
     ? ["worktree", "add", path, branch]
     : ["worktree", "add", "-b", branch, path];
   const r = await runGit(args, repoDir);
   if (r.code !== 0) {
-    throw new Error(`git worktree add falló para '${branch}': ${r.stderr.trim() || r.stdout.trim()}`);
+    throw new Error(`git worktree add failed for '${branch}': ${r.stderr.trim() || r.stdout.trim()}`);
   }
   return r;
 }
@@ -72,23 +72,23 @@ export async function fetch(cwd: string): Promise<GitResult> {
 }
 
 export async function rebase(cwd: string, target: string): Promise<GitResult> {
-  if (!validateBranchName(target)) throw new Error(`Rama target inválida: ${target}`);
+  if (!validateBranchName(target)) throw new Error(`Invalid target branch: ${target}`);
   return runGit(["rebase", target], cwd);
 }
 
 export async function mergeNoFf(cwd: string, branch: string): Promise<GitResult> {
-  if (!validateBranchName(branch)) throw new Error(`Rama inválida: ${branch}`);
+  if (!validateBranchName(branch)) throw new Error(`Invalid branch: ${branch}`);
   return runGit(["merge", "--no-ff", branch], cwd);
 }
 
 export async function cherryPick(cwd: string, sha: string): Promise<GitResult> {
-  if (!validateCommitSha(sha)) throw new Error(`SHA inválido: ${sha}`);
+  if (!validateCommitSha(sha)) throw new Error(`Invalid SHA: ${sha}`);
   return runGit(["cherry-pick", sha], cwd);
 }
 
 export async function cherry(cwd: string, target: string, branch: string): Promise<string> {
-  if (!validateBranchName(target)) throw new Error(`Rama target inválida: ${target}`);
-  if (!validateBranchName(branch)) throw new Error(`Rama inválida: ${branch}`);
+  if (!validateBranchName(target)) throw new Error(`Invalid target branch: ${target}`);
+  if (!validateBranchName(branch)) throw new Error(`Invalid branch: ${branch}`);
   const r = await runGit(["cherry", target, branch], cwd);
   return r.stdout.trim();
 }

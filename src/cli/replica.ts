@@ -5,14 +5,14 @@ import matter from "gray-matter";
 export interface TaskFrontmatter {
   id: number;
   slug: string;
-  estado: string;
-  asignado_a: string;
-  prioridad: string;
-  depende_de: string[];
+  status: string;
+  assigned_to: string;
+  priority: string;
+  depends_on: string[];
   rev: number;
   synced_rev: number;
   lock: string | null;
-  ultima_sync_db: string | null;
+  last_db_sync: string | null;
   needs_reconciliation?: boolean;
 }
 
@@ -41,14 +41,14 @@ export function writeTaskFile(beeDir: string, task: { id: number; code: string; 
   const fm: TaskFrontmatter = {
     id: task.id,
     slug: task.slug,
-    estado: task.status,
-    asignado_a: task.beeName ?? String(task.assigned_to),
-    prioridad: task.priority,
-    depende_de: [],
+    status: task.status,
+    assigned_to: task.beeName ?? String(task.assigned_to),
+    priority: task.priority,
+    depends_on: [],
     rev: task.rev,
     synced_rev: task.rev,
     lock: task.locked_by ? String(task.locked_by) : null,
-    ultima_sync_db: new Date().toISOString(),
+    last_db_sync: new Date().toISOString(),
   };
   if (task.needs_reconciliation) fm.needs_reconciliation = true;
   const body = [task.description, task.acceptance_criteria].filter(Boolean).join("\n\n");
@@ -67,10 +67,10 @@ export function upsertTasksSummary(beeDir: string, tasks: { code: string; slug: 
   const dir = tasksDir(beeDir);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
-  const header = `# Tareas — ${tasks.length > 0 ? `Bee ${tasks[0].beeName ?? tasks[0].assigned_to}` : "Sin asignar"}
+  const header = `# Tasks — ${tasks.length > 0 ? `Bee ${tasks[0].beeName ?? tasks[0].assigned_to}` : "Unassigned"}
 
-| Código | Slug | Estado | Prioridad | Rev |
-|--------|------|--------|-----------|-----|
+| Code | Slug | Status | Priority | Rev |
+|------|------|--------|----------|-----|
 `;
   const rows = tasks.map(
     (t) => `| ${t.code} | ${t.slug} | ${t.status} | ${t.priority} | ${t.rev} |`,
@@ -98,10 +98,10 @@ export function upsertResultsSummary(beeDir: string, results: { id: number; task
   const dir = tasksDir(beeDir);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
 
-  const header = `# Resultados
+  const header = `# Results
 
-| ID | Task | Outcome | Idempotency | Creado |
-|----|------|---------|-------------|--------|
+| ID | Task | Outcome | Idempotency | Created |
+|----|------|---------|-------------|---------|
 `;
   const rows = results.map(
     (r) => `| ${r.id} | ${r.task_code ?? ""} | ${r.outcome} | ${r.idempotency_key} | ${r.created_at} |`,

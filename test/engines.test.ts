@@ -57,11 +57,11 @@ test("api-client: register + heartbeat", async () => {
   expect(hb.ok).toBe(true);
 });
 
-test("api-client: listMyTasks solo devuelve tareas asignadas", async () => {
+test("api-client: listMyTasks only returns assigned tasks", async () => {
   const opClient = new OrchestratorClient(baseUrl, OP_TOKEN, "amalia");
   const beeClient = new OrchestratorClient(baseUrl, BEE_TOKEN, "test-bee");
 
-  // Crear tarea para test-bee
+  // Create task for test-bee
   const createRes = await opClient.register({
     worktree_path: "/wt/op", engine: "opencode", connection_mode: "cli",
   });
@@ -156,62 +156,62 @@ afterEach(() => {
   try { rmSync(beeDir, { recursive: true, force: true }); } catch { /* Windows */ }
 });
 
-test("bee-config: lee bee.md correctamente", () => {
+test("bee-config: reads bee.md correctly", () => {
   const beeMd = `# Bee: test-bee
 
-## Motor
-- **Motor:** claude-code
-- **Modo de conexión:** cli
-- **Modelo:** claude-sonnet-4
-- **Heartbeat (segundos):** 30
+## Engine
+- **Engine:** claude-code
+- **Connection mode:** cli
+- **Model:** claude-sonnet-4
+- **Heartbeat (seconds):** 30
 
-## Conexión al Orchestrator API
-- **Nombre:** test-bee
-- **Comando de arranque:** npx claude-code
+## Orchestrator API Connection
+- **Name:** test-bee
+- **Start command:** npx claude-code
 `;
   writeFileSync(join(beeDir, "bee.md"), beeMd, "utf8");
 
   const config = readBeeConfig(beeDir);
-  expect(config.motor).toBe("claude-code");
-  expect(config.modo_conexion).toBe("cli");
-  expect(config.modelo).toBe("claude-sonnet-4");
-  expect(config.heartbeat_segundos).toBe(30);
+  expect(config.engine).toBe("claude-code");
+  expect(config.connection_mode).toBe("cli");
+  expect(config.model).toBe("claude-sonnet-4");
+  expect(config.heartbeat_seconds).toBe(30);
   expect(config.bee_name).toBe("test-bee");
-  expect(config.comando_arranque).toBe("npx claude-code");
+  expect(config.start_command).toBe("npx claude-code");
 });
 
-test("bee-config: lee token del disco", () => {
+test("bee-config: reads token from disk", () => {
   writeFileSync(join(secretsDir, "test-bee.token"), "secret-token-value", "utf8");
   const token = readBeeToken(secretsDir, "test-bee");
   expect(token).toBe("secret-token-value");
 });
 
-test("bee-config: bee.md sin motor lanza error", () => {
-  writeFileSync(join(beeDir, "bee.md"), "# Bee: test\n## Motor\n- **Modelo:** x\n", "utf8");
-  expect(() => readBeeConfig(beeDir)).toThrow("falta 'Motor'");
+test("bee-config: bee.md with no engine throws", () => {
+  writeFileSync(join(beeDir, "bee.md"), "# Bee: test\n## Engine\n- **Model:** x\n", "utf8");
+  expect(() => readBeeConfig(beeDir)).toThrow("missing 'Engine'");
 });
 
 // ───── 4.3: runtime tests ─────
 
-test("bee-runtime: ejecuta tarea con adaptador simulado", async () => {
+test("bee-runtime: runs a task with a simulated adapter", async () => {
   const runtimeBeeDir = join(tmpdir(), `amalia-runtime-${Date.now()}`);
   const rtSecretsDir = join(runtimeBeeDir, ".secrets");
   mkdirSync(rtSecretsDir, { recursive: true });
   mkdirSync(join(runtimeBeeDir, "tasks"), { recursive: true });
 
-  // Crear bee.md
+  // Create bee.md
   const beeMd = `# Bee: runtime-bee
-## Motor
-- **Motor:** custom
-- **Modo de conexión:** cli
-- **Heartbeat (segundos):** 9999
+## Engine
+- **Engine:** custom
+- **Connection mode:** cli
+- **Heartbeat (seconds):** 9999
 
-## Conexión al Orchestrator API
-- **Nombre:** runtime-bee
+## Orchestrator API Connection
+- **Name:** runtime-bee
 `;
   writeFileSync(join(runtimeBeeDir, "bee.md"), beeMd, "utf8");
 
-  // Crear bee en DB + token
+  // Create bee in DB + token
   const rtToken = generateToken();
   db.prepare(
     `INSERT INTO bees (name, worktree_path, engine, connection_mode, token_hash, status)
@@ -219,7 +219,7 @@ test("bee-runtime: ejecuta tarea con adaptador simulado", async () => {
   ).run(runtimeBeeDir, hashToken(rtToken));
   writeFileSync(join(rtSecretsDir, "runtime-bee.token"), rtToken, "utf8");
 
-  // Crear tarea pending para runtime-bee
+  // Create a pending task for runtime-bee
   const createTask = await fetch(`${baseUrl}/tasks`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OP_TOKEN}` },
@@ -231,7 +231,7 @@ test("bee-runtime: ejecuta tarea con adaptador simulado", async () => {
   expect(createTask.status).toBe(201);
   const task = await createTask.json();
 
-  // Adaptador simulado que completa la tarea
+  // Simulated adapter that completes the task
   const fakeEngine: EngineAdapter = {
     async run(spec: TaskSpec, _ctx: EngineContext) {
       return {
@@ -245,7 +245,7 @@ test("bee-runtime: ejecuta tarea con adaptador simulado", async () => {
   const abort = new AbortController();
   const logs: string[] = [];
 
-  // runBee en background
+  // runBee in background
   const promise = runBee({
     beeDir: runtimeBeeDir,
     secretsDir: rtSecretsDir,
@@ -255,12 +255,12 @@ test("bee-runtime: ejecuta tarea con adaptador simulado", async () => {
     onLog: (m) => logs.push(m),
   });
 
-  // Esperar a que procese
+  // Wait for it to process
   await new Promise((r) => setTimeout(r, 3000));
   abort.abort();
   await promise.catch(() => {});
 
-  // Verificar que la tarea se completó
+  // Verify the task completed
   const check = await fetch(`${baseUrl}/tasks/${task.code}`, {
     headers: { Authorization: `Bearer ${OP_TOKEN}` },
   });
@@ -272,10 +272,10 @@ test("bee-runtime: ejecuta tarea con adaptador simulado", async () => {
 
 // ───── 4.4: adapter tests ─────
 
-test("ollama adapter: falla gracefulmente si endpoint no responde", async () => {
+test("ollama adapter: fails gracefully if the endpoint doesn't respond", async () => {
   const result = await ollamaAdapter.run(
     { code: "TASK-1", slug: "test", description: "Test", acceptance_criteria: null, priority: "medium", rev: 1 },
-    { beeDir: "/tmp", beeName: "test", beeId: 1, config: { motor: "ollama", modo_conexion: "api", modelo: "llama3", heartbeat_segundos: 60, bee_name: "test" }, instanceId: "i1", log: () => {} },
+    { beeDir: "/tmp", beeName: "test", beeId: 1, config: { engine: "ollama", connection_mode: "api", model: "llama3", heartbeat_seconds: 60, bee_name: "test" }, instanceId: "i1", log: () => {} },
   );
   expect(result.outcome).toBe("failed");
   expect(result.blockers).toBeTruthy();
@@ -283,62 +283,62 @@ test("ollama adapter: falla gracefulmente si endpoint no responde", async () => 
 
 // ───── 4.5: launch tests ─────
 
-test("launch: getAdapter selecciona adaptador según motor", () => {
+test("launch: getAdapter selects the adapter based on engine", () => {
   writeFileSync(join(beeDir, "bee.md"), `# Bee: test
-## Motor
-- **Motor:** ollama
-- **Modo de conexión:** api
-## Conexión al Orchestrator API
-- **Nombre:** test
+## Engine
+- **Engine:** ollama
+- **Connection mode:** api
+## Orchestrator API Connection
+- **Name:** test
 `, "utf8");
 
   const adapter = getAdapter(beeDir);
   expect(adapter).toBe(ollamaAdapter);
 });
 
-test("launch: getAdapter lanza error para motor no soportado", () => {
+test("launch: getAdapter throws for an unsupported engine", () => {
   writeFileSync(join(beeDir, "bee.md"), `# Bee: test
-## Motor
-- **Motor:** unknown-engine
-- **Modo de conexión:** cli
-## Conexión al Orchestrator API
-- **Nombre:** test
+## Engine
+- **Engine:** unknown-engine
+- **Connection mode:** cli
+## Orchestrator API Connection
+- **Name:** test
 `, "utf8");
 
-  expect(() => getAdapter(beeDir)).toThrow("no soportado");
+  expect(() => getAdapter(beeDir)).toThrow("not supported");
 });
 
-// ───── Modo degradado tests ─────
+// ───── Degraded mode tests ─────
 
-test("modo degradado: ejecuta tarea local sin API", async () => {
+test("degraded mode: runs a local task without the API", async () => {
   const degDir = join(tmpdir(), `amalia-degrad-${Date.now()}`);
   const degSecrets = join(degDir, ".secrets");
   mkdirSync(degSecrets, { recursive: true });
   mkdirSync(join(degDir, "tasks"), { recursive: true });
 
   writeFileSync(join(degDir, "bee.md"), `# Bee: deg-bee
-## Motor
-- **Motor:** custom
-- **Modo de conexión:** cli
-- **Heartbeat (segundos):** 9999
+## Engine
+- **Engine:** custom
+- **Connection mode:** cli
+- **Heartbeat (seconds):** 9999
 
-## Conexión al Orchestrator API
-- **Nombre:** deg-bee
+## Orchestrator API Connection
+- **Name:** deg-bee
 `, "utf8");
 
-  // Escribir tarea pending local (como si hubiera sido creada por CLI)
+  // Write a local pending task (as if created by the CLI)
   const taskContent = `---
 id: 1
 slug: deg-task
-estado: pending
-asignado_a: deg-bee
-prioridad: high
+status: pending
+assigned_to: deg-bee
+priority: high
 rev: 1
 synced_rev: 1
 lock: null
-ultima_sync_db: "2026-06-28T20:00:00.000Z"
+last_db_sync: "2026-06-28T20:00:00.000Z"
 ---
-Tarea de prueba modo degradado
+Test task for degraded mode
 `;
   writeFileSync(join(degDir, "tasks", "deg-task.task.md"), taskContent, "utf8");
 
@@ -353,11 +353,11 @@ Tarea de prueba modo degradado
   const abort = new AbortController();
   const logs: string[] = [];
 
-  // API falsa — iniciamos pero paramos para que no haya conexión
+  // Fake API — we point at an address that doesn't exist
   const promise = runBee({
     beeDir: degDir,
     secretsDir: degSecrets,
-    apiBaseUrl: "http://127.0.0.1:1", // no existe
+    apiBaseUrl: "http://127.0.0.1:1", // doesn't exist
     engine: fakeEngine,
     signal: abort.signal,
     onLog: (m) => logs.push(m),
@@ -366,42 +366,42 @@ Tarea de prueba modo degradado
   abort.abort();
   await promise.catch(() => {});
 
-  // Verificar que en modo degradado se ejecutó y escribió resultado local
-  expect(logs.some((l) => l.includes("modo degradado"))).toBe(true);
-  expect(logs.some((l) => l.includes("Ejecutando"))).toBe(true);
+  // Verify it ran in degraded mode and wrote a local result
+  expect(logs.some((l) => l.includes("degraded mode"))).toBe(true);
+  expect(logs.some((l) => l.includes("Running"))).toBe(true);
   expect(logs.some((l) => l.includes("completed"))).toBe(true);
 
-  // Verificar resultado local existe
+  // Verify the local result exists
   const tasksDir = join(degDir, "tasks");
   const resultFiles = readdirSync(tasksDir).filter((f) => f.startsWith("result-"));
   expect(resultFiles.length).toBeGreaterThanOrEqual(1);
 
-  // Verificar synced_rev está atrasado (rev=2, pero synced_rev debe ser < rev porque no hay API)
+  // Verify synced_rev is behind (rev=2, but synced_rev should be < rev since there's no API)
   const updatedTask = readFileSync(join(tasksDir, "deg-task.task.md"), "utf8");
   expect(updatedTask).toContain("synced_rev");
-  expect(updatedTask).toContain("estado: completed");
+  expect(updatedTask).toContain("status: completed");
 
   try { rmSync(degDir, { recursive: true, force: true }); } catch { /* Windows */ }
 });
 
-test("modo degradado: synced_rev queda atrasado cuando reportResult falla", async () => {
+test("degraded mode: synced_rev stays behind when reportResult fails", async () => {
   const sdDir = join(tmpdir(), `amalia-sync-${Date.now()}`);
   const sdSecrets = join(sdDir, ".secrets");
   mkdirSync(sdSecrets, { recursive: true });
   mkdirSync(join(sdDir, "tasks"), { recursive: true });
 
   writeFileSync(join(sdDir, "bee.md"), `# Bee: sync-bee
-## Motor
-- **Motor:** custom
-- **Modo de conexión:** cli
-- **Heartbeat (segundos):** 9999
+## Engine
+- **Engine:** custom
+- **Connection mode:** cli
+- **Heartbeat (seconds):** 9999
 
-## Conexión al Orchestrator API
-- **Nombre:** sync-bee
+## Orchestrator API Connection
+- **Name:** sync-bee
 `, "utf8");
   writeFileSync(join(sdSecrets, "sync-bee.token"), generateToken(), "utf8");
 
-  // Crear bee en DB real para poder registrarse
+  // Create a real bee in the DB so it can register
   const syncToken = generateToken();
   db.prepare(
     `INSERT INTO bees (name, worktree_path, engine, connection_mode, token_hash, status)
@@ -409,7 +409,7 @@ test("modo degradado: synced_rev queda atrasado cuando reportResult falla", asyn
   ).run(sdDir, hashToken(syncToken));
   writeFileSync(join(sdSecrets, "sync-bee.token"), syncToken, "utf8");
 
-  // Crear tarea via API
+  // Create the task via the API
   const taskRes = await fetch(`${baseUrl}/tasks`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${OP_TOKEN}` },
@@ -422,17 +422,17 @@ test("modo degradado: synced_rev queda atrasado cuando reportResult falla", asyn
   const createdTask = await taskRes.json();
   expect(createdTask.status).toBe("pending");
 
-  // Copiar archivo local de la tarea
+  // Copy the local task file
   const taskMd = `---
 id: ${createdTask.id}
 slug: sync-test
-estado: pending
-asignado_a: sync-bee
-prioridad: low
+status: pending
+assigned_to: sync-bee
+priority: low
 rev: 1
 synced_rev: 1
 lock: null
-ultima_sync_db: "2026-06-28T20:00:00.000Z"
+last_db_sync: "2026-06-28T20:00:00.000Z"
 ---
 Sync test task
 `;
@@ -459,60 +459,60 @@ Sync test task
   abort.abort();
   await promise.catch(() => {});
 
-  // La tarea debe estar completed en DB
+  // The task should be completed in the DB
   const check = await fetch(`${baseUrl}/tasks/${createdTask.code}`, {
     headers: { Authorization: `Bearer ${OP_TOKEN}` },
   });
   const updated = await check.json();
   expect(updated.status).toBe("completed");
 
-  // Archivo local debe tener synced_rev = rev (todo sincronizado)
+  // The local file should have synced_rev = rev (everything in sync)
   const taskFile = readFileSync(join(sdDir, "tasks", "sync-test.task.md"), "utf8");
   expect(taskFile).toContain("synced_rev: 2");
-  expect(taskFile).not.toContain("estado: pending");
+  expect(taskFile).not.toContain("status: pending");
 
   try { rmSync(sdDir, { recursive: true, force: true }); } catch { /* Windows */ }
 });
 
 // ───── bee-config: api_base_url parsing ─────
 
-test("bee-config: parsea api_base_url desde bee.md", () => {
+test("bee-config: parses api_base_url from bee.md", () => {
   writeFileSync(join(beeDir, "bee.md"), `# Bee: test
-## Motor
-- **Motor:** ollama
-- **Modo de conexión:** api
-## Conexión al Orchestrator API
-- **Nombre:** test
-- **URL de la API:** http://localhost:4000/api/orchestrator
+## Engine
+- **Engine:** ollama
+- **Connection mode:** api
+## Orchestrator API Connection
+- **Name:** test
+- **API URL:** http://localhost:4000/api/orchestrator
 `, "utf8");
 
   const config = readBeeConfig(beeDir);
-  expect(config.motor).toBe("ollama");
+  expect(config.engine).toBe("ollama");
   expect(config.api_base_url).toBe("http://localhost:4000/api/orchestrator");
 });
 
-// ───── Seguridad: adaptador no filtra process.env ─────
+// ───── Security: adapter doesn't leak process.env ─────
 
-test("seguridad: adaptador claude-code no pasa process.env al subproceso", async () => {
-  // Solo verificamos que el adaptador no inunde el env
-  // El adaptador usa un objeto construido manualmente
+test("security: claude-code adapter doesn't pass process.env to the subprocess", async () => {
+  // We can only verify the adapter doesn't flood the env
+  // the adapter uses a manually built object
   const { claudeCodeAdapter } = await import("../src/engines/adapters/claude-code.js");
-  // No podemos testear execFileSync sin ejecutarlo realmente,
-  // pero verificamos que el adaptador existe y tiene la interfaz correcta
+  // We can't test execFileSync without actually running it,
+  // but we verify the adapter exists and has the right interface
   expect(claudeCodeAdapter).toBeDefined();
   expect(typeof claudeCodeAdapter.run).toBe("function");
 });
 
 // ───── ollama success path ─────
 
-test("ollama adapter: completa tarea si endpoint responde", async () => {
+test("ollama adapter: completes the task when the endpoint responds", async () => {
   const { createServer } = await import("node:http");
   const ollamaServer = createServer((req: any, res: any) => {
     let body = "";
     req.on("data", (c: Buffer) => body += c);
     req.on("end", () => {
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ response: "Tarea completada por Ollama simulado" }));
+      res.end(JSON.stringify({ response: "Task completed by simulated Ollama" }));
     });
   });
   await new Promise<void>((r) => ollamaServer.listen(0, "127.0.0.1", r));
@@ -520,12 +520,12 @@ test("ollama adapter: completa tarea si endpoint responde", async () => {
   const ollamaUrl = `http://127.0.0.1:${addr.port}/api/generate`;
 
   const result = await ollamaAdapter.run(
-    { code: "TASK-42", slug: "ollama-test", description: "Prueba Ollama", acceptance_criteria: "OK", priority: "high", rev: 1 },
+    { code: "TASK-42", slug: "ollama-test", description: "Ollama test", acceptance_criteria: "OK", priority: "high", rev: 1 },
     {
       beeDir: "/tmp", beeName: "ollama-bee", beeId: 42,
       config: {
-        motor: "ollama", modo_conexion: "api", modelo: "llama3",
-        heartbeat_segundos: 60, bee_name: "ollama-bee",
+        engine: "ollama", connection_mode: "api", model: "llama3",
+        heartbeat_seconds: 60, bee_name: "ollama-bee",
         endpoint: ollamaUrl,
       },
       instanceId: "i1", log: () => {},
@@ -533,7 +533,7 @@ test("ollama adapter: completa tarea si endpoint responde", async () => {
   );
 
   expect(result.outcome).toBe("completed");
-  expect(result.notes).toContain("Tarea completada");
+  expect(result.notes).toContain("Task completed");
 
   ollamaServer.close();
 });

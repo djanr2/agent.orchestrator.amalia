@@ -5,17 +5,17 @@ import { currentBranch, fetch, rebase, hasConflicts, rebaseAbort } from "../git.
 export function registerUpdate(program: Command): void {
   program
     .command("update")
-    .description("Actualizar el worktree de Amalia contra la rama objetivo")
+    .description("Update the Amalia worktree against the target branch")
     .action(async () => {
       const root = findRoot(process.cwd());
-      if (!root) { console.error("Error: no se encontró .amalia-root"); process.exit(1); }
+      if (!root) { console.error("Error: .amalia-root not found"); process.exit(1); }
       const config = readConfig(root);
 
       const repoBranch = await currentBranch(root);
       if (repoBranch !== config.target_branch) {
-        console.log(`Nota: la rama del repo cambió de ${config.target_branch} a ${repoBranch}`);
+        console.log(`Note: repo branch changed from ${config.target_branch} to ${repoBranch}`);
         writeConfig(root, { ...config, target_branch: repoBranch });
-        console.log(`  .amalia-root actualizado`);
+        console.log(`  .amalia-root updated`);
       }
 
       await fetch(root);
@@ -27,14 +27,14 @@ export function registerUpdate(program: Command): void {
         const conflicts = await hasConflicts(aDir);
         if (conflicts) {
           await rebaseAbort(aDir);
-          console.error("Error: conflicto durante el rebase. Se abortó automáticamente.");
-          console.error("  Resuelve los conflictos manualmente y corre `amalia integrate`");
+          console.error("Error: conflict during rebase. Automatically aborted.");
+          console.error("  Resolve the conflicts manually and run `amalia integrate`");
           process.exit(1);
         }
-        console.error(`Error durante rebase: ${r.stderr}`);
+        console.error(`Error during rebase: ${r.stderr}`);
         process.exit(1);
       }
 
-      console.log(`✓ Worktree Amalia actualizado contra ${config.target_branch}`);
+      console.log(`✓ Amalia worktree updated against ${config.target_branch}`);
     });
 }

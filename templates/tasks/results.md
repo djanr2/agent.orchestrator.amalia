@@ -1,4 +1,4 @@
-# Resultados
+# Results
 
-| ID | Task | Outcome | Idempotency | Creado |
-|----|------|---------|-------------|--------|
+| ID | Task | Outcome | Idempotency | Created |
+|----|------|---------|-------------|---------|
