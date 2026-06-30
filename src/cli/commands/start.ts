@@ -7,6 +7,7 @@ import { openDb } from "../../db/index.js";
 import { getSchemaVersion } from "../../db/index.js";
 import { SCHEMA_VERSION } from "../../shared/types.js";
 import { createServer } from "../../api/server.js";
+import { startScheduler } from "../../api/jobs/scheduler.js";
 import {
   findRoot,
   readConfig,
@@ -100,6 +101,8 @@ export function registerStart(program: Command): void {
       const server = createServer({ db, port, staticDir });
       await server.listen(port);
 
+      const scheduler = startScheduler(db, server.io);
+
       const pid = String(process.pid);
       writeFileSync(pidPath(root, config), pid, "utf8");
 
@@ -108,7 +111,8 @@ export function registerStart(program: Command): void {
       console.log(`  PID ${pid}`);
       printTokenInfo(root, config);
 
-      process.on("SIGINT", () => { server.close(); process.exit(0); });
-      process.on("SIGTERM", () => { server.close(); process.exit(0); });
+      const shutdown = () => { scheduler.stop(); server.close(); process.exit(0); };
+      process.on("SIGINT", shutdown);
+      process.on("SIGTERM", shutdown);
     });
 }
