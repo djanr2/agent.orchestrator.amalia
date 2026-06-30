@@ -33,21 +33,23 @@ export function registerKill(program: Command): void {
 
       const pending = db.prepare("SELECT code, status FROM tasks WHERE assigned_to = ? AND status IN ('pending', 'in_progress')").all(beeId) as { code: string; status: string }[];
 
-      if (pending.length > 0 && !opts.force) {
+      if (pending.length > 0 && !opts.force && !opts.reassignTo) {
         console.error(`Error: el bee tiene ${pending.length} tareas sin completar:`);
         for (const t of pending) console.error(`  ${t.code} (${t.status})`);
         console.error("  Usa --force para eliminar de todas formas, o --reassign-to <bee> para reasignar");
         db.close(); process.exit(1);
       }
 
-      if (pending.length > 0 && opts.reassignTo) {
+      if (opts.reassignTo) {
         const target = db.prepare("SELECT id FROM bees WHERE name = ?").get(opts.reassignTo) as { id: number } | undefined;
         if (!target) {
           console.error(`Error: no existe el bee "${opts.reassignTo}"`);
           db.close(); process.exit(1);
         }
-        db.prepare("UPDATE tasks SET assigned_to = ? WHERE assigned_to = ? AND status IN ('pending', 'in_progress')").run(target.id, beeId);
-        console.log(`  Tareas reasignadas a ${opts.reassignTo}`);
+        // Reasigna TODAS las tareas (no solo pending/in_progress): cualquier fila que
+        // siga apuntando a este bee como assigned_to bloqueará el DELETE por foreign key.
+        const info = db.prepare("UPDATE tasks SET assigned_to = ? WHERE assigned_to = ?").run(target.id, beeId);
+        if (info.changes > 0) console.log(`  ${info.changes} tarea(s) reasignadas a ${opts.reassignTo}`);
       }
 
       const branch = `bee/${name}`;
@@ -61,7 +63,14 @@ export function registerKill(program: Command): void {
 
       await worktreeRemove(root, beeDir, !!opts.force);
 
-      db.prepare("DELETE FROM bees WHERE id = ?").run(beeId);
+      try {
+        db.prepare("DELETE FROM bees WHERE id = ?").run(beeId);
+      } catch (e: any) {
+        db.close();
+        console.error(`Error: no se pudo eliminar "${name}" — aún tiene tareas/resultados asociados.`);
+        console.error(`  Usa --reassign-to <bee> para transferir su historial antes de eliminarlo.`);
+        process.exit(1);
+      }
 
       const tokenPath = join(secretsDir(root, config), `${name}.token`);
       try { unlinkSync(tokenPath); } catch { }
