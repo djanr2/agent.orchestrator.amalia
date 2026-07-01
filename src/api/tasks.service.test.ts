@@ -1,6 +1,6 @@
 import { test, expect } from "vitest";
 import { openDb, applySchema } from "../db/index.js";
-import { createTask, listTasks, claimTask, reportResult, wouldCreateCycle } from "./tasks.service.js";
+import { createTask, listTasks, claimTask, reportResult, wouldCreateCycle, setTaskStatus } from "./tasks.service.js";
 import { hashToken } from "./auth.js";
 
 function setupDb() {
@@ -171,6 +171,57 @@ test("failing and exhausting max_attempts blocks the dependent with upstream_fai
     .get(main.id) as any;
   expect(mainStatus.status).toBe("blocked");
   expect(mainStatus.block_reason).toBe("upstream_failed");
+});
+
+test("setTaskStatus moving a blocked task to pending resets attempts and block_reason", () => {
+  const db = setupDb();
+  const task = createTask(db, null, 1, {
+    assigned_to: "database-bee",
+    description: "Task that exhausts retries",
+    priority: "medium",
+    slug: "retry-me",
+    depends_on: [],
+    max_attempts: 1,
+  });
+  claimTask(db, null, 2, task.code, "inst-1", 60);
+  reportResult(db, null, 2, task.code, { outcome: "failed", idempotency_key: "idem-1" });
+
+  const blocked = db.prepare("SELECT status, attempts, block_reason FROM tasks WHERE id = ?").get(task.id) as any;
+  expect(blocked.status).toBe("blocked");
+  expect(blocked.attempts).toBe(1);
+  expect(blocked.block_reason).toBe("retries_exhausted");
+
+  const updated = setTaskStatus(db, null, task.code, "pending");
+  expect(updated?.status).toBe("pending");
+  expect(updated?.attempts).toBe(0);
+  expect(updated?.block_reason).toBeNull();
+
+  // The task can now be claimed and re-attempted just like a fresh task.
+  const claim = claimTask(db, null, 2, task.code, "inst-2", 60);
+  expect(claim.claimed).toBe(true);
+});
+
+test("setTaskStatus to a non-pending status only changes status, leaving attempts untouched", () => {
+  const db = setupDb();
+  const task = createTask(db, null, 1, {
+    assigned_to: "database-bee",
+    description: "Task",
+    priority: "medium",
+    slug: "cancel-me",
+    depends_on: [],
+    max_attempts: 3,
+  });
+  claimTask(db, null, 2, task.code, "inst-1", 60);
+  reportResult(db, null, 2, task.code, { outcome: "failed", idempotency_key: "idem-2" });
+
+  const updated = setTaskStatus(db, null, task.code, "cancelled");
+  expect(updated?.status).toBe("cancelled");
+  expect(updated?.attempts).toBe(1);
+});
+
+test("setTaskStatus returns undefined for an unknown task code", () => {
+  const db = setupDb();
+  expect(setTaskStatus(db, null, "TASK-999", "pending")).toBeUndefined();
 });
 
 test("idempotency_key avoids duplicating results", () => {

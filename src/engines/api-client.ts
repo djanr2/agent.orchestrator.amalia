@@ -60,6 +60,11 @@ export interface ReportResultData {
   task: TaskData;
 }
 
+/** Requests time out after this long: a stale keep-alive socket (e.g. after
+ *  a multi-minute engine run leaves the connection idle) can otherwise hang
+ *  fetch() forever instead of erroring, freezing the whole CLI process. */
+const REQUEST_TIMEOUT_MS = 15_000;
+
 export class OrchestratorClient {
   constructor(
     private baseUrl: string,
@@ -80,6 +85,7 @@ export class OrchestratorClient {
         method: "POST",
         headers: this.headers(),
         body: JSON.stringify(input),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       const body = await res.json();
       if (!res.ok) return { ok: false, status: res.status, error: body.error ?? "UNKNOWN" };
@@ -94,6 +100,7 @@ export class OrchestratorClient {
       const res = await fetch(`${this.baseUrl}/bees/${beeId}/heartbeat`, {
         method: "PATCH",
         headers: this.headers(),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       const body = await res.json();
       if (!res.ok) return { ok: false, status: res.status, error: body.error ?? "UNKNOWN" };
@@ -109,6 +116,7 @@ export class OrchestratorClient {
       if (status) params.set("status", status);
       const res = await fetch(`${this.baseUrl}/tasks?${params.toString()}`, {
         headers: this.headers(),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       const body = await res.json();
       if (!res.ok) return { ok: false, status: res.status, error: body.error ?? "UNKNOWN" };
@@ -124,6 +132,7 @@ export class OrchestratorClient {
         method: "POST",
         headers: this.headers(),
         body: JSON.stringify({ instance_id: instanceId }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       const body = await res.json();
       if (res.status === 409) return { ok: true, data: body as ClaimResult };
@@ -140,6 +149,7 @@ export class OrchestratorClient {
         method: "POST",
         headers: this.headers(),
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       const body = await res.json();
       if (!res.ok) return { ok: false, status: res.status, error: body.error ?? "UNKNOWN" };

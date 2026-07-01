@@ -33,7 +33,8 @@ export function registerRun(program: Command): void {
     .command("run")
     .description("Run a bee's agent runtime (claims and executes its pending tasks)")
     .argument("<bee>", "Bee name")
-    .action(async (bee: string) => {
+    .option("--once", "Run a single claim-execute-report cycle and exit, instead of looping forever as a daemon")
+    .action(async (bee: string, opts: { once?: boolean }) => {
       const root = findRoot(process.cwd());
       if (!root) { console.error("Error: .amalia-root not found"); process.exit(1); }
       const config = readConfig(root);
@@ -50,9 +51,13 @@ export function registerRun(program: Command): void {
       process.on("SIGINT", stop);
       process.on("SIGTERM", stop);
 
-      await launchBee(target).catch((e: any) => {
+      await launchBee({ ...target, once: opts.once }).catch((e: any) => {
         console.error("Fatal error:", e.message);
         process.exit(1);
       });
+
+      // undici (fetch) keeps keep-alive sockets open, which would otherwise
+      // hold the event loop alive indefinitely after a --once run completes.
+      if (opts.once) process.exit(0);
     });
 }

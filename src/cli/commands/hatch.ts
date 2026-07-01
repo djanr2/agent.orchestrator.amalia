@@ -11,6 +11,25 @@ import { renderTemplate, defaultApiBaseUrl } from "../templates.js";
 
 const PACKAGE_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", "..", "..");
 
+const START_COMMANDS: Record<string, string> = {
+  "claude-code": "claude -p --allowedTools Read,Edit,Write,Bash --permission-mode acceptEdits",
+  opencode: "opencode run",
+  "copilot-cli": "gh copilot suggest -t shell",
+  "codex-cli": "codex exec",
+  ollama: "",
+  custom: "",
+};
+
+function defaultStartCommand(engine: string): string {
+  return START_COMMANDS[engine] ?? "";
+}
+
+function defaultModel(engine: string): string {
+  if (engine === "ollama") return "llama3";
+  if (engine === "claude-code") return "sonnet";
+  return "";
+}
+
 export function registerHatch(program: Command): void {
   program
     .command("hatch")
@@ -74,8 +93,8 @@ export function registerHatch(program: Command): void {
         engine: opts.engine,
         role: opts.role ?? "",
         connection_mode: "cli",
-        model: "",
-        start_command: "",
+        model: defaultModel(opts.engine),
+        start_command: defaultStartCommand(opts.engine),
         endpoint: "",
         auth_env: "",
         api_base_url: defaultApiBaseUrl(),

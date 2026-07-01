@@ -5,7 +5,7 @@ import { authMiddleware, requireOperator } from "../middleware/auth.js";
 import { emitEvent } from "../events.js";
 import { registerBeeSchema, createTaskSchema, claimSchema, resultSchema, COMMIT_RE } from "../validation.js";
 import { registerOrUpdateBee, heartbeat, listBees } from "../bees.service.js";
-import { createTask, listTasks, claimTask, reportResult } from "../tasks.service.js";
+import { createTask, listTasks, claimTask, reportResult, setTaskStatus } from "../tasks.service.js";
 
 export function registerRoutes(
   router: Router,
@@ -140,14 +140,11 @@ export function registerRoutes(
       res.status(400).json({ error: "VALIDATION_ERROR", message: "invalid status" });
       return;
     }
-    const info = db.prepare(
-      "UPDATE tasks SET status = ?, rev = rev + 1, updated_at = datetime('now') WHERE code = ?",
-    ).run(newStatus, req.params.code as string);
-    if (info.changes === 0) {
+    const updated = setTaskStatus(db, io, req.params.code as string, newStatus);
+    if (!updated) {
       res.status(404).json({ error: "NOT_FOUND" });
       return;
     }
-    const updated = db.prepare("SELECT * FROM tasks WHERE code = ?").get(req.params.code as string);
     res.json(updated);
   });
 

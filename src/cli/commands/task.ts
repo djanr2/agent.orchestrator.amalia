@@ -85,6 +85,33 @@ export function registerTask(program: Command): void {
     });
 
   task
+    .command("retry")
+    .description("Move a blocked/failed task back to pending, resetting attempts")
+    .argument("<code>", "Task code (TASK-XX)")
+    .action(async (code: string) => {
+      try {
+        const token = operatorToken();
+        const base = apiBaseUrl();
+        const res = await fetch(`${base}/tasks/${code}/status`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ status: "pending" }),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          console.error(`Error: ${err.error} — ${err.message ?? ""}`); process.exit(1);
+        }
+
+        const updated = await res.json();
+        console.log(`✓ Task ${updated.code} set to pending (attempts reset)`);
+      } catch (e: any) {
+        console.error(`Error: ${e.message ?? "Could not connect to the API"}`);
+        process.exit(1);
+      }
+    });
+
+  task
     .command("show")
     .description("Show task detail")
     .argument("<code>", "Task code (TASK-XX)")

@@ -346,6 +346,37 @@ export function reportResult(
   });
 }
 
+/** Manual operator status override. Moving a task to `pending` resets
+ *  `attempts` and clears `block_reason` — otherwise a task blocked by
+ *  `retries_exhausted` would immediately re-block on the next failed claim,
+ *  since claimTask does not check attempts on its own. */
+export function setTaskStatus(
+  db: DatabaseSync,
+  io: IoServer | null,
+  taskCode: string,
+  newStatus: string,
+): Task | undefined {
+  return transaction(db, () => {
+    const info = newStatus === "pending"
+      ? db.prepare(
+          "UPDATE tasks SET status = ?, attempts = 0, block_reason = NULL, rev = rev + 1, updated_at = datetime('now') WHERE code = ?",
+        ).run(newStatus, taskCode)
+      : db.prepare(
+          "UPDATE tasks SET status = ?, rev = rev + 1, updated_at = datetime('now') WHERE code = ?",
+        ).run(newStatus, taskCode);
+
+    if (info.changes === 0) return undefined;
+
+    const updated = db.prepare("SELECT * FROM tasks WHERE code = ?").get(taskCode) as unknown as Task;
+    emitEvent(db, io, "task:status_changed", {
+      taskId: updated.id,
+      code: taskCode,
+      status: updated.status,
+    });
+    return updated;
+  });
+}
+
 export function unblockDependents(db: DatabaseSync, io: IoServer | null, completedTaskId: number): void {
   const dependents = db
     .prepare("SELECT task_id FROM task_dependencies WHERE depends_on_task_id = ?")

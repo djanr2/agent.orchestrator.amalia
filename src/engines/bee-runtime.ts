@@ -14,6 +14,9 @@ export interface RuntimeOptions {
   engine: EngineAdapter;
   onLog?: (msg: string) => void;
   signal?: AbortSignal;
+  /** Run a single claim→execute→report cycle then return, instead of looping
+   *  forever as a persistent daemon. Useful for manual/one-off runs. */
+  once?: boolean;
 }
 
 function log(opts: RuntimeOptions, msg: string): void {
@@ -77,6 +80,7 @@ export async function runBee(opts: RuntimeOptions): Promise<void> {
     } catch (e: any) {
       log(opts, `Error in work cycle: ${e.message}`);
     }
+    if (opts.once) break;
     await sleep(2000);
   }
 

@@ -18,6 +18,7 @@ export interface LaunchOptions {
   beeDir: string;
   secretsDir: string;
   apiBaseUrl: string;
+  once?: boolean;
 }
 
 export function getAdapter(beeDir: string): EngineAdapterMap[keyof EngineAdapterMap] {
