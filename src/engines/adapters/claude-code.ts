@@ -48,7 +48,17 @@ export const claudeCodeAdapter: EngineAdapter = {
     const [rawCmd, baseArgs] = splitCommand(configured);
     const [resolvedCmd, leadingArgs] = resolveWindowsCommand(rawCmd);
 
-    const prompt = `Solve the following task:\n\n${task.description}\n\nAcceptance criteria: ${task.acceptance_criteria ?? "none"}`;
+    // Inject --model if bee.md specifies one and the start_command doesn't
+    // already include it explicitly.
+    if (ctx.config.model && !baseArgs.includes("--model")) {
+      baseArgs.push("--model", ctx.config.model);
+    }
+
+    const prompt = [
+      `Solve the following task:\n\n${task.description}`,
+      `Acceptance criteria: ${task.acceptance_criteria ?? "none"}`,
+      `If you need clarification or a decision from a human before you can proceed, write your question clearly at the end of your response. A human will read your output and create a follow-up task with the answer.`,
+    ].join("\n\n");
 
     ctx.log(`Running ${ctx.config.engine} for task ${task.code}: ${configured}`);
 

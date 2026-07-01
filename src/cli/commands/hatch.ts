@@ -26,7 +26,7 @@ function defaultStartCommand(engine: string): string {
 
 function defaultModel(engine: string): string {
   if (engine === "ollama") return "llama3";
-  if (engine === "claude-code") return "sonnet";
+  if (engine === "claude-code") return "claude-sonnet-4-6";
   return "";
 }
 
