@@ -1,229 +1,229 @@
 # Amalia
 
-**Orquestador multi-agente sobre git worktrees.**
+**Multi-agent orchestrator over git worktrees.**
 
-Amalia coordina varios agentes de IA (Claude Code, OpenCode, Ollama) trabajando en paralelo sobre el mismo repositorio, cada uno aislado en su propio git worktree. Se le asignan tareas por CLI o por API, cada agente ("bee") reclama las suyas, las ejecuta, reporta resultados y su trabajo se integra de vuelta en una rama central llamada `amalia`.
+Amalia coordinates multiple AI agents (Claude Code, OpenCode, Ollama) working in parallel on the same repository, each isolated inside its own git worktree. Tasks are assigned via the CLI or API, each agent ("bee") claims its own, executes them, reports results, and the work is integrated back into a central branch called `amalia`.
 
-## Qué aporta Amalia
+## What Amalia gives you
 
-- **Aislamiento por worktree.** Cada bee vive en `honeycomb/<bee>/` con su propia rama (`bee/<name>`). No hay conflictos por ramas compartidas ni por directorios de trabajo pisándose.
-- **Cola de tareas persistente.** SQLite local (`honeycomb/orchestrator-api/amalia.db`) con `bees`, `tasks`, `task_dependencies`, `results`, `integrations` y `events`. Soporta prioridades, reintentos, dependencias, leases y control optimista de concurrencia (`rev`).
-- **API HTTP + WebSocket.** Servidor Express en `:4000` con autenticación por token bearer (`Bearer <token>` por bee) y eventos en tiempo real vía Socket.IO para el dashboard.
-- **Dashboard web.** Vista servida en `http://127.0.0.1:4000/` para observar bees, tareas y eventos sin depender de la CLI.
-- **Réplica en archivos.** Cada tarea se escribe también como `tasks/<slug>.task.md` con frontmatter dentro del worktree del bee, para que el agente lea instrucciones sin necesidad de la API.
-- **Adaptadores de motor.** `claude-code`, `opencode` y `ollama`, todos configurables desde `bee.md` (`engine`, `model`, `start_command`).
-- **Integración por git.** El trabajo de un bee se integra en la rama `amalia` vía `merge --no-ff` o `cherry-pick`, usando el trailer `Amalia-Task: TASK-XX` para trazabilidad.
-- **Recuperación segura.** `init` hace rollback si algo falla, `doctor` diagnostica y auto-repara `.gitignore` y migraciones de esquema, `kill` bloquea eliminar bees con trabajo sin integrar salvo `--force`.
-- **La reina es intocable.** El bee `amalia` no puede ser eliminado con `kill`.
+- **Per-worktree isolation.** Each bee lives in `honeycomb/<bee>/` with its own branch (`bee/<name>`). No conflicts from shared branches or working directories stepping on each other.
+- **Persistent task queue.** Local SQLite (`honeycomb/orchestrator-api/amalia.db`) with `bees`, `tasks`, `task_dependencies`, `results`, `integrations` and `events`. Supports priorities, retries, dependencies, leases and optimistic concurrency control (`rev`).
+- **HTTP API + WebSocket.** Express server on `:4000` with bearer token authentication (`Bearer <token>` per bee) and real-time events over Socket.IO for the dashboard.
+- **Web dashboard.** Served at `http://127.0.0.1:4000/` to observe bees, tasks and events without depending on the CLI.
+- **File-based replica.** Every task is also written as `tasks/<slug>.task.md` with frontmatter inside the bee's worktree, so the agent can read instructions without hitting the API.
+- **Engine adapters.** `claude-code`, `opencode` and `ollama`, all configurable from `bee.md` (`engine`, `model`, `start_command`).
+- **Git-based integration.** A bee's work is integrated into the `amalia` branch via `merge --no-ff` or `cherry-pick`, using the `Amalia-Task: TASK-XX` trailer for traceability.
+- **Safe recovery.** `init` rolls back if anything fails, `doctor` diagnoses and auto-repairs `.gitignore` and schema migrations, `kill` refuses to remove bees with unintegrated work unless `--force` is passed.
+- **The Queen is untouchable.** The `amalia` bee cannot be removed with `kill`.
 
-## Requisitos
+## Requirements
 
-- Node.js **>= 20** (recomendado 24)
-- Git **>= 2.5** (soporte de worktrees)
-- Estar dentro de un repositorio git
+- Node.js **>= 20** (24 recommended)
+- Git **>= 2.5** (worktree support)
+- Must be run inside a git repository
 
-## Instalación
+## Installation
 
 ```bash
 npm install
 npm run build
-npm link   # opcional, para usar `amalia` global
+npm link   # optional, to expose `amalia` globally
 ```
 
-## Ciclo de vida típico
+## Typical lifecycle
 
 ```bash
-amalia init                                     # crea el hive
-amalia start -d                                 # arranca la API en background
-amalia hatch database-bee --engine claude-code  # crea un bee
-amalia task add database-bee "Migrar schema X"  # le asigna una tarea
-amalia run database-bee                         # el bee reclama y ejecuta
-amalia check                                    # observa el estado
-amalia integrate merge database-bee             # integra su trabajo en amalia
-amalia stop                                     # apaga la API
+amalia init                                     # create the hive
+amalia start -d                                 # start the API in the background
+amalia hatch database-bee --engine claude-code  # create a bee
+amalia task add database-bee "Migrate schema X" # assign it a task
+amalia run database-bee                         # bee claims and executes
+amalia check                                    # observe status
+amalia integrate merge database-bee             # integrate its work into amalia
+amalia stop                                     # shut the API down
 ```
 
-## Comandos
+## Commands
 
-Todos los comandos se ejecutan desde cualquier directorio dentro del repo: Amalia localiza el hive subiendo hasta encontrar `.amalia-root`.
+Every command can be run from any directory inside the repo: Amalia locates the hive by walking up until it finds `.amalia-root`.
 
 ### `amalia init`
 
-Inicializa un nuevo hive en el repositorio actual.
+Initializes a new hive in the current repository.
 
-- Verifica Git >= 2.5, Node >= 20, y que estés dentro de un worktree.
-- Crea `honeycomb/`, `honeycomb/orchestrator-api/`, `honeycomb/.secrets/`, `honeycomb/dashboard/`.
-- Crea la base SQLite y aplica el esquema.
-- Genera el token del operador (guardado en `.secrets/amalia.token`, permisos 600).
-- Crea el worktree `honeycomb/amalia/` sobre la rama actual y renderiza `AGENTS.md` + `bee.md` + `tasks/`.
-- Inserta el bee `amalia` en la DB, escribe `.amalia-root` y añade el bloque de `.gitignore`.
-- **Rollback completo** si algo falla a mitad de camino.
+- Checks Git >= 2.5, Node >= 20, and that you are inside a worktree.
+- Creates `honeycomb/`, `honeycomb/orchestrator-api/`, `honeycomb/.secrets/`, `honeycomb/dashboard/`.
+- Creates the SQLite database and applies the schema.
+- Generates the operator token (stored in `.secrets/amalia.token`, mode 600).
+- Creates the `honeycomb/amalia/` worktree on the current branch and renders `AGENTS.md` + `bee.md` + `tasks/`.
+- Inserts the `amalia` bee into the DB, writes `.amalia-root` and appends the `.gitignore` block.
+- **Full rollback** if anything fails midway.
 
-Opciones:
-- `--honeycomb-path <path>` — ruta del hive (default: `honeycomb`).
+Options:
+- `--honeycomb-path <path>` — hive path (default: `honeycomb`).
 
 ### `amalia start`
 
-Arranca el servidor API del orquestador.
+Starts the orchestrator API server.
 
-- Valida que la versión de esquema coincida con la del código (sugiere `amalia doctor` si no).
-- Levanta Express + Socket.IO y el scheduler de jobs.
-- Sirve el dashboard estático si `dashboard/` existe.
-- Escribe `api.pid` para permitir `amalia stop`.
-- Muestra el token del operador y la URL clickeable (OSC 8).
+- Validates that the schema version matches the code (suggests `amalia doctor` otherwise).
+- Boots Express + Socket.IO and the jobs scheduler.
+- Serves the static dashboard if `dashboard/` exists.
+- Writes `api.pid` so `amalia stop` can find it.
+- Prints the operator token and a clickable URL (OSC 8).
 
-Opciones:
-- `-p, --port <port>` — puerto (default: `4000`, env `AMALIA_PORT`).
-- `-d, --detach` — corre en background y libera la terminal (logs en `honeycomb/orchestrator-api/api.log`).
+Options:
+- `-p, --port <port>` — port (default: `4000`, env `AMALIA_PORT`).
+- `-d, --detach` — runs in the background and frees the terminal (logs at `honeycomb/orchestrator-api/api.log`).
 
 ### `amalia stop`
 
-Detiene el servidor lanzado con `start`. Lee `api.pid`, envía `SIGTERM` y borra el archivo de PID.
+Stops the server started with `start`. Reads `api.pid`, sends `SIGTERM`, and deletes the PID file.
 
 ### `amalia hatch <name>`
 
-Crea un nuevo bee en el hive.
+Creates a new bee in the hive.
 
-- Valida que el nombre matchee el patrón `<algo>-bee`.
-- Inserta el bee en la DB, genera su token (`.secrets/<name>.token`, 600).
-- Crea el worktree `honeycomb/<name>/` sobre la rama `bee/<name>`.
-- Renderiza `bee.md` + `AGENTS.md` + `tasks/tasks.md` + `tasks/results.md` con `engine`, `model` y `start_command` por defecto según el motor.
-- **Rollback completo** si falla la creación del worktree.
+- Validates that the name matches the `<something>-bee` pattern.
+- Inserts the bee into the DB, generates its token (`.secrets/<name>.token`, mode 600).
+- Creates the `honeycomb/<name>/` worktree on the `bee/<name>` branch.
+- Renders `bee.md` + `AGENTS.md` + `tasks/tasks.md` + `tasks/results.md` with default `engine`, `model` and `start_command` for the chosen engine.
+- **Full rollback** if worktree creation fails.
 
-Argumentos:
-- `<name>` — nombre del bee (ej: `database-bee`).
+Arguments:
+- `<name>` — bee name (e.g. `database-bee`).
 
-Opciones:
-- `--engine <engine>` — motor a usar (`opencode`, `claude-code`, `ollama`). Default: `opencode`.
-- `--branch <branch>` — rama del worktree (default: `bee/<name>`).
-- `--role <role>` — descripción libre del rol del bee.
+Options:
+- `--engine <engine>` — engine to use (`opencode`, `claude-code`, `ollama`). Default: `opencode`.
+- `--branch <branch>` — worktree branch (default: `bee/<name>`).
+- `--role <role>` — free-form description of the bee's role.
 
 ### `amalia kill <name>`
 
-Elimina un bee del hive: DB, token, worktree y rama.
+Removes a bee from the hive: DB row, token, worktree and branch.
 
-- Rechaza `amalia` (la reina no se toca).
-- Si el bee tiene tareas `pending` o `in_progress`, exige `--force` o `--reassign-to`.
-- Si su rama tiene commits que no llegaron a `target_branch`, exige `--force`.
-- Reasignar mueve **todas** las tareas del bee al destino (evita romper la FK).
+- Rejects `amalia` (the Queen is off-limits).
+- If the bee has `pending` or `in_progress` tasks, requires `--force` or `--reassign-to`.
+- If its branch has commits not yet in `target_branch`, requires `--force`.
+- Reassigning moves **all** of the bee's tasks to the target (to avoid breaking the FK constraint).
 
-Opciones:
-- `--force` — remueve aunque haya trabajo pendiente o commits sin integrar.
-- `--reassign-to <bee>` — transfiere las tareas a otro bee antes de eliminar.
+Options:
+- `--force` — remove even if there is pending work or unintegrated commits.
+- `--reassign-to <bee>` — transfer tasks to another bee before removal.
 
 ### `amalia run <bee>`
 
-Lanza el runtime del bee: reclama tareas pendientes de la API y las ejecuta con el motor configurado en su `bee.md`.
+Launches the bee's runtime: claims pending tasks from the API and runs them with the engine configured in its `bee.md`.
 
-- Verifica que el worktree y el token del bee existan.
-- Corre en loop como daemon salvo `--once`.
-- Cierra sockets de fetch al terminar en modo `--once` para no dejar el proceso colgado.
+- Checks that the bee's worktree and token exist.
+- Runs as a daemon loop unless `--once` is passed.
+- Closes fetch sockets on exit in `--once` mode so the process doesn't hang.
 
-Opciones:
-- `--once` — ejecuta un único ciclo *claim → execute → report* y sale.
+Options:
+- `--once` — runs a single *claim → execute → report* cycle and exits.
 
 ### `amalia task`
 
-Gestión de tareas contra la API. Requiere que el servidor esté corriendo.
+Task management against the API. Requires the server to be running.
 
 #### `amalia task add <bee> <description>`
 
-Crea una tarea y actualiza el archivo local del bee.
+Creates a task and updates the bee's local files.
 
-- Calcula el `slug` a partir de la descripción (o del `--slug` dado).
-- Registra dependencias por código (`TASK-XX`).
-- Escribe `tasks/<slug>.task.md` y actualiza el resumen `tasks/tasks.md` del bee.
+- Computes the `slug` from the description (or from `--slug` if given).
+- Registers dependencies by code (`TASK-XX`).
+- Writes `tasks/<slug>.task.md` and refreshes the bee's `tasks/tasks.md` summary.
 
-Opciones:
+Options:
 - `--priority <priority>` — `high`, `medium`, `low` (default: `medium`).
-- `--depends-on <codes>` — códigos de tareas prerequisito, separados por coma.
-- `--slug <slug>` — override del slug autogenerado.
+- `--depends-on <codes>` — comma-separated codes of prerequisite tasks.
+- `--slug <slug>` — override the auto-generated slug.
 
 #### `amalia task list`
 
-Lista tareas con filtros opcionales.
+Lists tasks with optional filters.
 
-Opciones:
-- `--status <status>` — filtra por estado.
-- `--bee <bee>` — filtra por bee asignado.
+Options:
+- `--status <status>` — filter by status.
+- `--bee <bee>` — filter by assigned bee.
 
 #### `amalia task retry <code>`
 
-Mueve una tarea `blocked` o `failed` de vuelta a `pending`, reseteando el contador de intentos.
+Moves a `blocked` or `failed` task back to `pending`, resetting the attempt counter.
 
 #### `amalia task show <code>`
 
-Muestra el detalle de una tarea (código, slug, estado, prioridad, asignación, descripción, `rev`, `block_reason`).
+Shows a task's detail (code, slug, status, priority, assignment, description, `rev`, `block_reason`).
 
 ### `amalia check [bee]`
 
-Muestra el estado de los bees y sus tareas. Si la API está viva, la consulta; si no, cae a leer los worktrees locales y contar `.task.md`.
+Shows bee and task status. If the API is alive it queries it; otherwise it falls back to reading the local worktrees and counting `.task.md` files.
 
-Argumentos:
-- `[bee]` — opcional, filtra por un bee específico.
+Arguments:
+- `[bee]` — optional, filter by a specific bee.
 
 ### `amalia logs <bee>`
 
-Muestra los eventos recientes del bee (últimos 20) desde la API. Si la API no responde, imprime el `tasks/results.md` local del bee.
+Shows the bee's recent events (last 20) from the API. If the API is unreachable, prints the bee's local `tasks/results.md`.
 
 ### `amalia update`
 
-Actualiza el worktree de `amalia` contra `target_branch`.
+Updates the `amalia` worktree against `target_branch`.
 
-- Detecta si la rama del repo cambió y sincroniza `.amalia-root`.
-- `git fetch` + `git rebase` sobre la target branch.
-- Si hay conflictos, aborta el rebase automáticamente y pide `amalia integrate`.
+- Detects if the repo's branch changed and syncs `.amalia-root`.
+- `git fetch` + `git rebase` on top of the target branch.
+- If there are conflicts, aborts the rebase automatically and asks you to run `amalia integrate`.
 
 ### `amalia integrate`
 
-Integra el trabajo de un bee en el worktree de `amalia`. Requiere que la Amalia esté limpia.
+Integrates a bee's work into the `amalia` worktree. Requires a clean Amalia worktree.
 
 #### `amalia integrate merge <bee>`
 
-`git merge --no-ff bee/<name>` sobre `honeycomb/amalia/`. En conflicto, indica resolver a mano.
+`git merge --no-ff bee/<name>` on `honeycomb/amalia/`. On conflict, prompts you to resolve manually.
 
 #### `amalia integrate cherry-pick <bee> <sha>`
 
-`git cherry-pick <sha>` sobre `honeycomb/amalia/`. Valida el SHA antes de ejecutar.
+`git cherry-pick <sha>` on `honeycomb/amalia/`. The SHA is validated before running.
 
 ### `amalia sync`
 
-Reconcilia los archivos locales `tasks/<slug>.task.md` con la base de datos.
+Reconciles local `tasks/<slug>.task.md` files with the database.
 
-- Descarga las tareas de la API y las agrupa por bee.
-- Si un archivo local tiene `rev` menor que la DB, lo reescribe.
-- Si el local tiene `rev` mayor que la DB, imprime un aviso de conflicto (no sobreescribe).
+- Downloads tasks from the API and groups them by bee.
+- If a local file's `rev` is lower than the DB's, rewrites it.
+- If the local `rev` is higher than the DB's, prints a conflict warning (does not overwrite).
 
 ### `amalia doctor`
 
-Diagnóstica y repara el hive.
+Diagnoses and repairs the hive.
 
-- Chequea Git, estar dentro de repo, rama actual.
-- Verifica el bloque de `.gitignore` de Amalia y lo reinsera si falta.
-- Verifica la existencia y versión del esquema de la DB, corriendo `migrate` si está desactualizada.
-- Verifica que el worktree de `amalia` exista.
-- Sale con código != 0 si algún check no se pudo reparar.
+- Checks Git, that you are inside a repo, current branch.
+- Verifies the Amalia `.gitignore` block and re-inserts it if missing.
+- Verifies the DB's existence and schema version, running `migrate` if out of date.
+- Verifies that the `amalia` worktree exists.
+- Exits non-zero if any check could not be repaired.
 
-## Motores soportados
+## Supported engines
 
-Cada bee se configura editando su archivo `honeycomb/<bee>/bee.md`. El runtime (`amalia run <bee>`) lee las secciones `## Engine` y `## Orchestrator API Connection` con formato `- **Clave:** valor`.
+Each bee is configured by editing its `honeycomb/<bee>/bee.md` file. The runtime (`amalia run <bee>`) reads the `## Engine` and `## Orchestrator API Connection` sections, using the `- **Key:** value` format.
 
-Los tres adaptadores comparten:
-- **Prompt fijo**: `descripción + acceptance criteria`, más una instrucción de "escribe tu duda al final si necesitas aclaración" en claude/opencode.
-- **Env vars inyectadas**: `AMALIA_TASK_CODE` y `AMALIA_BEE_NAME`. Si defines `Auth env var`, Amalia copia esa variable del entorno del operador al proceso del bee (útil para `ANTHROPIC_API_KEY`, etc.).
-- **`start_command` no soporta quoting**: se hace un split naive por espacios. Si necesitas comillas o pipes, mete el comando en un wrapper script y apunta ahí.
+The three adapters share:
+- **Fixed prompt**: `description + acceptance criteria`, plus an instruction to "write your question at the end if you need clarification" for claude/opencode.
+- **Injected env vars**: `AMALIA_TASK_CODE` and `AMALIA_BEE_NAME`. If you set `Auth env var`, Amalia forwards that variable from the operator's environment into the bee process (useful for `ANTHROPIC_API_KEY`, etc.).
+- **`start_command` does not support quoting**: it is split naively on whitespace. If you need quotes or pipes, put the command in a wrapper script and point at that instead.
 
 ### Claude Code (`claude-code`)
 
-Ejecuta el CLI `claude` localmente y le pasa el prompt como último argumento posicional.
+Runs the `claude` CLI locally and passes the prompt as the last positional argument.
 
-- **Comando por defecto**: `claude -p --allowedTools Read,Edit,Write,Bash --permission-mode acceptEdits`
-- **Modelo por defecto**: `claude-sonnet-4-6` (se inyecta como `--model <model>` si no está ya en el `start_command`).
-- **Requisitos**: `claude` en el `PATH` y autenticación (típicamente `ANTHROPIC_API_KEY` o login OAuth previo).
-- **Timeout**: 5 minutos por tarea, buffer de 10 MB.
-- **Windows**: los shims `.cmd` de npm se resuelven directo al `.exe` (o al `node <script>`) para no pasar por `cmd.exe` y evitar inyección de shell.
+- **Default command**: `claude -p --allowedTools Read,Edit,Write,Bash --permission-mode acceptEdits`
+- **Default model**: `claude-sonnet-4-6` (injected as `--model <model>` if not already present in `start_command`).
+- **Requirements**: `claude` on `PATH` and authentication (typically `ANTHROPIC_API_KEY` or a prior OAuth login).
+- **Timeout**: 5 minutes per task, 10 MB output buffer.
+- **Windows**: npm `.cmd` shims are resolved directly to the `.exe` (or the `node <script>` behind them) so we never go through `cmd.exe`, avoiding shell injection.
 
-Ejemplo de `bee.md`:
+Example `bee.md`:
 
 ```md
 ## Engine
@@ -236,17 +236,17 @@ Ejemplo de `bee.md`:
 - **Auth env var:** ANTHROPIC_API_KEY
 ```
 
-Crear el bee: `amalia hatch backend-bee --engine claude-code`.
+Create the bee: `amalia hatch backend-bee --engine claude-code`.
 
 ### OpenCode (`opencode`)
 
-Comparte el adaptador de `claude-code` (mismo flujo `execFile` + prompt posicional), pero con dos diferencias clave.
+Shares the `claude-code` adapter (same `execFile` flow + positional prompt), with two key differences.
 
-- **Comando por defecto**: `opencode run --auto`
-- **Modelo por defecto**: `opencode/big-pickle` (también se inyecta como `--model <model>`).
-- **Peculiaridad importante**: se le agrega automáticamente `--dir <beeDir>` porque `opencode run` **no** hereda el `cwd` del proceso padre como sí lo hace `claude`. Si tu `start_command` ya incluye `--dir`, Amalia respeta el tuyo.
+- **Default command**: `opencode run --auto`
+- **Default model**: `opencode/big-pickle` (also injected as `--model <model>`).
+- **Key peculiarity**: `--dir <beeDir>` is added automatically because `opencode run` **does not** inherit `cwd` from the parent process the way `claude` does. If your `start_command` already includes `--dir`, Amalia respects yours.
 
-Ejemplo de `bee.md`:
+Example `bee.md`:
 
 ```md
 ## Engine
@@ -259,19 +259,19 @@ Ejemplo de `bee.md`:
 - **Auth env var:**
 ```
 
-Crear el bee: `amalia hatch frontend-bee --engine opencode`. Es el motor default de `hatch`.
+Create the bee: `amalia hatch frontend-bee --engine opencode`. This is the default engine for `hatch`.
 
 ### Ollama (`ollama`)
 
-**No ejecuta un CLI**: hace `POST` HTTP a la API de Ollama. Esto tiene implicaciones fuertes.
+**Does not run a CLI**: it POSTs HTTP requests to the Ollama API. This has strong implications.
 
-- **Endpoint por defecto**: `http://localhost:11434/api/generate` (override con el campo `Endpoint` en `bee.md`).
-- **Modelo por defecto**: `llama3`. Se manda en el body de la request, **no** como flag.
-- **`Start command` se ignora**: no hay proceso local que arrancar.
-- **`stream: false`**: espera la respuesta completa antes de cerrar.
-- **Limitación clave**: Ollama devuelve texto plano. El adaptador guarda ese texto en `notes` del resultado, pero **no modifica archivos** ni ejecuta comandos por sí solo. Sirve como agente consultor / generador de propuestas, no como editor autónomo. Para automatizar edits sobre lo que responde el modelo hay que integrarlo desde fuera.
+- **Default endpoint**: `http://localhost:11434/api/generate` (override with the `Endpoint` field in `bee.md`).
+- **Default model**: `llama3`. Sent in the request body, **not** as a flag.
+- **`Start command` is ignored**: there is no local process to spawn.
+- **`stream: false`**: waits for the full response before closing.
+- **Key limitation**: Ollama returns plain text. The adapter stores that text in the result's `notes`, but **does not modify files** or run commands on its own. It works as a consultant / proposal-generating agent, not as an autonomous editor. To automate edits from the model's output, you have to wire that in externally.
 
-Ejemplo de `bee.md`:
+Example `bee.md`:
 
 ```md
 ## Engine
@@ -284,36 +284,36 @@ Ejemplo de `bee.md`:
 - **Auth env var:**
 ```
 
-Crear el bee: `amalia hatch reviewer-bee --engine ollama`.
+Create the bee: `amalia hatch reviewer-bee --engine ollama`.
 
-## Estructura de directorios
+## Directory layout
 
 ```
 <repo>/
-├── .amalia-root                        # marca del hive (config JSON)
+├── .amalia-root                        # hive marker (JSON config)
 └── honeycomb/
-    ├── amalia/                         # worktree de integración
-    ├── <bee>/                          # un worktree por bee
-    │   ├── bee.md                      # config del bee (engine, modelo, endpoint)
+    ├── amalia/                         # integration worktree
+    ├── <bee>/                          # one worktree per bee
+    │   ├── bee.md                      # bee config (engine, model, endpoint)
     │   ├── AGENTS.md
     │   └── tasks/
-    │       ├── tasks.md                # resumen legible
+    │       ├── tasks.md                # human-readable summary
     │       ├── results.md
-    │       └── <slug>.task.md          # una tarea por archivo (frontmatter)
+    │       └── <slug>.task.md          # one file per task (frontmatter)
     ├── orchestrator-api/
     │   ├── amalia.db                   # SQLite
     │   ├── api.pid
     │   └── api.log
     ├── .secrets/
-    │   ├── amalia.token                # token del operador
-    │   └── <bee>.token                 # un token por bee
+    │   ├── amalia.token                # operator token
+    │   └── <bee>.token                 # one token per bee
     └── dashboard/
 ```
 
-## Autenticación
+## Authentication
 
-Cada request a la API va con `Authorization: Bearer <token>`. Cada bee tiene su propio token; el token de `amalia` es el del operador y tiene permisos plenos. Los tokens se guardan hasheados en la DB (`token_hash`) y en claro en `.secrets/` con permisos 600.
+Every API request carries `Authorization: Bearer <token>`. Each bee has its own token; the `amalia` token is the operator's and has full permissions. Tokens are stored hashed in the DB (`token_hash`) and in clear text under `.secrets/` with mode 600.
 
-## Licencia
+## License
 
 MIT.
