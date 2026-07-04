@@ -44,14 +44,23 @@ function resolveWindowsCommand(cmd: string): [string, string[]] {
 export const claudeCodeAdapter: EngineAdapter = {
   async run(task: TaskSpec, ctx: EngineContext): Promise<{ outcome: "completed" | "failed"; idempotency_key: string; files_changed?: string[]; decisions?: string; blockers?: string; notes?: string }> {
     const idempotencyKey = randomUUID();
-    const configured = ctx.config.start_command || "claude -p --allowedTools Read,Edit,Write,Bash --permission-mode acceptEdits";
+    const defaultCommand = ctx.config.engine === "opencode"
+      ? "opencode run --auto"
+      : "claude -p --allowedTools Read,Edit,Write,Bash --permission-mode acceptEdits";
+    const configured = ctx.config.start_command || defaultCommand;
     const [rawCmd, baseArgs] = splitCommand(configured);
     const [resolvedCmd, leadingArgs] = resolveWindowsCommand(rawCmd);
 
     // Inject --model if bee.md specifies one and the start_command doesn't
     // already include it explicitly.
-    if (ctx.config.model && !baseArgs.includes("--model")) {
+    if (ctx.config.model && !baseArgs.includes("--model") && !baseArgs.includes("-m")) {
       baseArgs.push("--model", ctx.config.model);
+    }
+
+    // opencode run requires --dir to set the working directory; it does not
+    // inherit cwd the way claude does.
+    if (ctx.config.engine === "opencode" && !baseArgs.includes("--dir")) {
+      baseArgs.push("--dir", ctx.beeDir);
     }
 
     const prompt = [

@@ -13,7 +13,7 @@ const PACKAGE_ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..", ".
 
 const START_COMMANDS: Record<string, string> = {
   "claude-code": "claude -p --allowedTools Read,Edit,Write,Bash --permission-mode acceptEdits",
-  opencode: "opencode run",
+  opencode: "opencode run --auto",
   "copilot-cli": "gh copilot suggest -t shell",
   "codex-cli": "codex exec",
   ollama: "",
@@ -27,6 +27,7 @@ function defaultStartCommand(engine: string): string {
 function defaultModel(engine: string): string {
   if (engine === "ollama") return "llama3";
   if (engine === "claude-code") return "claude-sonnet-4-6";
+  if (engine === "opencode") return "opencode/big-pickle";
   return "";
 }
 
